@@ -10,6 +10,7 @@
 
 CTile::CTile()
 {
+	m_dwOwnerFrameTime = 0;
 	m_sOwnerType = NULL;
 	ZeroMemory(m_cOwnerName, sizeof(m_cOwnerName));
 	m_sDeadOwnerType = NULL;

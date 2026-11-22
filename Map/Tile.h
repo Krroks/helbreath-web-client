@@ -20,6 +20,7 @@ public:
 	CTile();
 	virtual ~CTile();	
 	DWORD m_dwOwnerTime;
+	DWORD m_dwOwnerFrameTime;					// length of the current animation step (set by iObjectFrameCounter)
 	DWORD m_dwEffectTime;
 	DWORD m_dwDeadOwnerTime;
 	DWORD m_dwDynamicObjectTime;

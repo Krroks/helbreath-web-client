@@ -35,6 +35,9 @@ char cDynamicObjectData1, cDynamicObjectData2, cDynamicObjectData3, cDynamicObje
 WORD  wFocusObjectID;
 short sFocus_dX, sFocus_dY;
 char  cFocusAction, cFocusFrame, cFocusDir, cFocusName[12];
+int   _tmp_sub = 0, sFocusSub = 0; // px added to the walk offset of a player between two animation frames (web smoothing)
+// the own player goes on walking after this step while the move command is held and the destination is not reached
+static BOOL bKeepsWalking(CGame * g) { return ((g->m_cCommand == OBJECTMOVE) || (g->m_cCommand == OBJECTRUN)) && ((g->m_sPlayerX != g->m_sCommX) || (g->m_sPlayerY != g->m_sCommY)); }
 short sFocusX, sFocusY, sFocusOwnerType, sFocusAppr1, sFocusAppr2, sFocusAppr3, sFocusAppr4;
 int iFocuiStatus;
 int   iFocusApprColor;
@@ -2065,7 +2068,7 @@ void CGame::DrawObjects(short sPivotX, short sPivotY, short sDivX, short sDivY, 
 					sFocusOwnerType = _tmp_sOwnerType;
 					cFocusAction = OBJECTDEAD;
 					wFocusObjectID = _tmp_wObjectID;
-					cFocusFrame  = _tmp_cFrame;
+					cFocusFrame  = _tmp_cFrame; sFocusSub = _tmp_sub;
 					cFocusDir    = _tmp_cDir;
 					sFocusAppr1  = _tmp_sAppr1;
 					sFocusAppr2  = _tmp_sAppr2;
@@ -2105,6 +2108,9 @@ void CGame::DrawObjects(short sPivotX, short sPivotY, short sDivX, short sDivY, 
 					_tmp_sAppr4     = m_pMapData->m_Data[dX][dY].m_sAppr4;
 					_tmp_iApprColor = m_pMapData->m_Data[dX][dY].m_iApprColor; 
 					_tmp_cFrame     = m_pMapData->m_Data[dX][dY].m_cOwnerFrame;
+#ifdef __EMSCRIPTEN__
+					_tmp_sub = (m_pMapData->iStepPhase(dX, dY, dwTime, (memcmp(m_cPlayerName, m_pMapData->m_Data[dX][dY].m_cOwnerName, 10) != 0) || bKeepsWalking(this)) * 4) >> 8;
+#endif
 					_tmp_iChatIndex = m_pMapData->m_Data[dX][dY].m_iChatMsg;
 					_tmp_iEffectType  = m_pMapData->m_Data[dX][dY].m_iEffectType;
 					_tmp_iEffectFrame = m_pMapData->m_Data[dX][dY].m_iEffectFrame;
@@ -2181,7 +2187,7 @@ void CGame::DrawObjects(short sPivotX, short sPivotY, short sDivX, short sDivY, 
 						wFocusObjectID = _tmp_wObjectID;
 						sFocusOwnerType = _tmp_sOwnerType;
 						cFocusAction = _tmp_cAction;
-						cFocusFrame  = _tmp_cFrame;
+						cFocusFrame  = _tmp_cFrame; sFocusSub = _tmp_sub;
 						cFocusDir    = _tmp_cDir;
 						sFocusAppr1  = _tmp_sAppr1;
 						sFocusAppr2  = _tmp_sAppr2;
@@ -2428,7 +2434,7 @@ void CGame::DrawObjects(short sPivotX, short sPivotY, short sDivX, short sDivY, 
 		_tmp_wObjectID  = wFocusObjectID;
 		_tmp_sOwnerType = sFocusOwnerType;
 		_tmp_cAction    = cFocusAction;
-		_tmp_cFrame     = cFocusFrame;
+		_tmp_cFrame     = cFocusFrame; _tmp_sub = sFocusSub;
 		_tmp_cDir       = cFocusDir;
 		_tmp_sAppr1     = sFocusAppr1;
 		_tmp_sAppr2     = sFocusAppr2;
@@ -10987,14 +10993,14 @@ BOOL   CGame::DrawObject_OnMove(int indexX, int indexY, int sX, int sY, BOOL bTr
 	dx = 0;
 	dy = 0;
 	switch (_tmp_cDir) {
-	case 1 : dy = 28 - (_tmp_cFrame<<2); break;
-	case 2 : dy = 28 - (_tmp_cFrame<<2); dx = (_tmp_cFrame<<2) - 28; break;
-	case 3 : dx = (_tmp_cFrame<<2) - 28; break;
-	case 4 : dx = (_tmp_cFrame<<2) - 28; dy = (_tmp_cFrame<<2) - 28; break;
-	case 5 : dy = (_tmp_cFrame<<2) - 28; break;
-	case 6 : dy = (_tmp_cFrame<<2) - 28; dx = 28 - (_tmp_cFrame<<2); break;
-	case 7 : dx = 28 - (_tmp_cFrame<<2); break;
-	case 8 : dx = 28 - (_tmp_cFrame<<2); dy = 28 - (_tmp_cFrame<<2); break;
+	case 1 : dy = 28 - ((_tmp_cFrame<<2) + _tmp_sub); break;
+	case 2 : dy = 28 - ((_tmp_cFrame<<2) + _tmp_sub); dx = ((_tmp_cFrame<<2) + _tmp_sub) - 28; break;
+	case 3 : dx = ((_tmp_cFrame<<2) + _tmp_sub) - 28; break;
+	case 4 : dx = ((_tmp_cFrame<<2) + _tmp_sub) - 28; dy = ((_tmp_cFrame<<2) + _tmp_sub) - 28; break;
+	case 5 : dy = ((_tmp_cFrame<<2) + _tmp_sub) - 28; break;
+	case 6 : dy = ((_tmp_cFrame<<2) + _tmp_sub) - 28; dx = 28 - ((_tmp_cFrame<<2) + _tmp_sub); break;
+	case 7 : dx = 28 - ((_tmp_cFrame<<2) + _tmp_sub); break;
+	case 8 : dx = 28 - ((_tmp_cFrame<<2) + _tmp_sub); dy = 28 - ((_tmp_cFrame<<2) + _tmp_sub); break;
 	}
 	switch (_tmp_sOwnerType) {
 	case 1:
@@ -15046,14 +15052,14 @@ BOOL   CGame::DrawObject_OnRun(int indexX, int indexY, int sX, int sY, BOOL bTra
 	dx = 0;
 	dy = 0;
 	switch (_tmp_cDir) {
-	case 1 : dy = 28 - (_tmp_cFrame<<2); break;
-	case 2 : dy = 28 - (_tmp_cFrame<<2); dx = (_tmp_cFrame<<2) - 28; break;
-	case 3 : dx = (_tmp_cFrame<<2) - 28; break;
-	case 4 : dx = (_tmp_cFrame<<2) - 28; dy = (_tmp_cFrame<<2) - 28; break;
-	case 5 : dy = (_tmp_cFrame<<2) - 28; break;
-	case 6 : dy = (_tmp_cFrame<<2) - 28; dx = 28 - (_tmp_cFrame<<2); break;
-	case 7 : dx = 28 - (_tmp_cFrame<<2); break;
-	case 8 : dx = 28 - (_tmp_cFrame<<2); dy = 28 - (_tmp_cFrame<<2); break;
+	case 1 : dy = 28 - ((_tmp_cFrame<<2) + _tmp_sub); break;
+	case 2 : dy = 28 - ((_tmp_cFrame<<2) + _tmp_sub); dx = ((_tmp_cFrame<<2) + _tmp_sub) - 28; break;
+	case 3 : dx = ((_tmp_cFrame<<2) + _tmp_sub) - 28; break;
+	case 4 : dx = ((_tmp_cFrame<<2) + _tmp_sub) - 28; dy = ((_tmp_cFrame<<2) + _tmp_sub) - 28; break;
+	case 5 : dy = ((_tmp_cFrame<<2) + _tmp_sub) - 28; break;
+	case 6 : dy = ((_tmp_cFrame<<2) + _tmp_sub) - 28; dx = 28 - ((_tmp_cFrame<<2) + _tmp_sub); break;
+	case 7 : dx = 28 - ((_tmp_cFrame<<2) + _tmp_sub); break;
+	case 8 : dx = 28 - ((_tmp_cFrame<<2) + _tmp_sub); dy = 28 - ((_tmp_cFrame<<2) + _tmp_sub); break;
 	}
 	if(m_pSprite[iBodyIndex + (_tmp_cDir - 1)] == NULL) return false; 
 
@@ -18049,7 +18055,7 @@ void CGame::DrawDialogBox_IconPannel(short msX, short msY)
 	// CLEROTH - LU
 	if ( m_iLU_Point > 0 ) {
 			// frame 17 is the hunger tube cover now: the hover highlight is gone; the icon sits right of the tube (x 320-331)
-			m_pSprite[SPRID_INTERFACE_ND_ICONPANNEL]->PutSpriteFast(335, 434, 18, dwTime);
+			m_pSprite[SPRID_INTERFACE_ND_ICONPANNEL]->PutSpriteFast(331, 441, 18, dwTime);
 	}
 
 	if ((msY > 436) && (msY < 478)) // Menu Icons
@@ -30266,6 +30272,19 @@ void CGame::UpdateScreen_OnGame()
 		m_iCameraShakingDegree--;
 		if (m_iCameraShakingDegree <= 0) m_iCameraShakingDegree = 0;
 	}
+#ifdef __EMSCRIPTEN__
+	if (!m_bIsObserverMode)
+	{	// between two walk steps the camera keeps going at the step's speed (the sprites do it through _tmp_sub)
+		int ph = m_pMapData->iPlayerStepPhase(m_cPlayerName, m_dwCurTime, bKeepsWalking(this));
+		if (ph != 0)
+		{	int mx = abs(m_sViewPointX - m_sViewDstX), my = abs(m_sViewPointY - m_sViewDstY);
+			if (mx > abs(m_sViewDX)) mx = abs(m_sViewDX);
+			if (my > abs(m_sViewDY)) my = abs(m_sViewDY);
+			m_sViewPointX += (m_sViewDX < 0 ? -1 : 1) * ((mx * ph) >> 8);
+			m_sViewPointY += (m_sViewDY < 0 ? -1 : 1) * ((my * ph) >> 8);
+		}
+	}
+#endif
 	sPivotX = m_pMapData->m_sPivotX;
 	sPivotY = m_pMapData->m_sPivotY;
 	sVal = m_sViewPointX - (sPivotX*32);

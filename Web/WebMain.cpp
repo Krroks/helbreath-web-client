@@ -87,11 +87,17 @@ static EM_BOOL on_wheel(int, const EmscriptenWheelEvent *e, void *) {
     return EM_TRUE;
 }
 
+extern "C" void hbjs_fps_toggle(); // EM_JS below
+
 // Browser keyCode values are the Win32 virtual-key codes for every key the game reads.
 static EM_BOOL on_key(int type, const EmscriptenKeyboardEvent *e, void *) {
     int vk = (int)e->keyCode;
     bool down = type == EMSCRIPTEN_EVENT_KEYDOWN;
     sync_mods(e->ctrlKey, e->shiftKey);
+    if (vk == 'Q' && e->ctrlKey) { // FPS overlay; the game has no Ctrl+Q
+        if (down && !e->repeat) hbjs_fps_toggle();
+        return EM_TRUE;
+    }
     // In the world and not typing, 1..9 and 0 act as F1..F9 and F10 (browsers own F5, F11...), and Shift+digit
     // opens the magic book at that circle, as Ctrl+digit does (the browser keeps Ctrl+digit). Chat gets digits.
     if (vk >= '0' && vk <= '9' && !e->altKey && G_pGame->m_cGameMode == GAMEMODE_ONMAINGAME && !G_pGame->m_bInputStatus) {
@@ -139,6 +145,27 @@ EM_JS(void, hbjs_present, (const WORD *px, int pitch, int W, int H), { // EM_JS 
     ctx.putImageData(img, 0, 0);
 });
 
+// Ctrl+Q overlay: loop = browser ticks/s, drawn = frames that reached the canvas/s, gap = longest pause between two drawn frames
+// while moving (gaps over 500 ms are idle, not counted).
+EM_JS(void, hbjs_fps, (int drew), {
+    const f = Module.hbFps, n = performance.now();
+    f.loop++;
+    if (drew) {
+        if (f.last && n - f.last < 500) f.gap = Math.max(f.gap, n - f.last);
+        f.last = n; f.draws++;
+    }
+    if (n - f.t >= 1000) {
+        if (f.on) f.el.textContent = 'loop ' + f.loop + '/s  dibujado ' + f.draws + '/s  hueco max ' + (f.gap | 0) + ' ms';
+        f.t = n; f.loop = f.draws = f.gap = 0;
+    }
+});
+EM_JS(void, hbjs_fps_toggle, (), {
+    const f = Module.hbFps;
+    f.on = !f.on;
+    f.el.style.display = f.on ? 'block' : 'none';
+    f.el.textContent = '';
+});
+
 static void frame() {
     static int lastMode = -1;
     if (G_pGame->m_cGameMode != lastMode) {
@@ -152,8 +179,10 @@ static void frame() {
     }
     if (G_pGame->m_bIsProgramActive) G_pGame->UpdateScreen();
     else if (G_pGame->m_cGameMode == GAMEMODE_ONLOADING) G_pGame->UpdateScreen_OnLoading(FALSE);
+    bool drew = false;
     if (hb_take_present_flag())
-        if (IDirectDrawSurface7 *s = hb_presented_surface()) hbjs_present(s->px, s->pitch, SCREENX, SCREENY);
+        if (IDirectDrawSurface7 *s = hb_presented_surface()) { hbjs_present(s->px, s->pitch, SCREENX, SCREENY); drew = true; }
+    hbjs_fps(drew);
 }
 
 MMRESULT _StartTimer(DWORD dwTime) {

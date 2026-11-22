@@ -15,6 +15,7 @@ CMapData::CMapData(class CGame * pGame)
 	ZeroMemory(m_iObjectIDcacheLocX, sizeof(m_iObjectIDcacheLocX));
 	ZeroMemory(m_iObjectIDcacheLocY, sizeof(m_iObjectIDcacheLocY));
 	m_dwDOframeTime = m_dwFrameTime = timeGetTime();
+	m_dwStepIdeal = 0;
 
 	for (i = 0; i < TOTALCHARACTERS; i++ ) 
 	{	m_stFrame[i][OBJECTMOVE].m_sMaxFrame = 7;
@@ -1192,6 +1193,12 @@ BOOL __fastcall CMapData::bSetOwner(WORD wObjectID, int sX, int sY, int sType, i
 	ZeroMemory(cTmpName, sizeof(cTmpName));
 	strcpy(cTmpName, pName);
 	dwTime = m_dwFrameTime;
+#ifdef __EMSCRIPTEN__
+	// m_dwFrameTime is a coarse clock (up to 90 ms old): a new move would start with a shortened first step. Use the real time, and for the
+	// player's chained moves the ideal end of the previous step, so every step lasts the same.
+	dwTime = timeGetTime();
+	if ((sAction == OBJECTMOVE || sAction == OBJECTRUN) && wObjectID == (WORD)m_pGame->m_sPlayerObjectID && (int)(dwTime - m_dwStepIdeal) < 100 && (int)(dwTime - m_dwStepIdeal) >= 0) dwTime = m_dwStepIdeal;
+#endif
 	iEffectType = iEffectFrame = iEffectTotalFrame = 0;
 	if (   (wObjectID < 30000)
 		&& (  (sX < m_sPivotX) || (sX >= m_sPivotX + MapDataSIZEX)
@@ -1665,6 +1672,7 @@ EXIT_SEARCH_LOOP:;
 			m_Data[dX][dY].m_cOwnerAction = (char)sAction;
 		}
 		m_Data[dX][dY].m_dwOwnerTime        = dwTime;
+		if (sType >= 1 && sType <= 6 && (sAction == OBJECTMOVE || sAction == OBJECTRUN)) m_Data[dX][dY].m_dwOwnerFrameTime = m_stFrame[sType][sAction].m_sFrameTime; // web smoothing reads it from the first tick
 		m_Data[dX][dY].m_iChatMsg = iChatIndex;
 		if ((sAppr4 & 0x00F0) != 0)
 		{	m_Data[dX][dY].m_iEffectType = (sAppr4 & 0x00F0) >> 4;
@@ -1794,6 +1802,24 @@ BOOL __fastcall CMapData::bGetDeadOwner(short sX, short sY, short * pOwnerType, 
 	return TRUE;
 }
 
+int CMapData::iStepPhase(int dX, int dY, DWORD dwNow, BOOL bMore)
+{	CTile & t = m_Data[dX][dY];
+	int e, ft = (int)t.m_dwOwnerFrameTime;
+	// only players' walk/run: their sprites move 4 px per frame; the last frame already sits on the tile, so it only moves on if bMore (another step follows)
+	if ((t.m_cOwnerAction != OBJECTMOVE && t.m_cOwnerAction != OBJECTRUN) || t.m_sOwnerType < 1 || t.m_sOwnerType > 6) return 0;
+	if (ft <= 0 || (t.m_cOwnerFrame >= 7 && !bMore)) return 0;
+	e = (int)(dwNow - t.m_dwOwnerTime);
+	if (e <= 0) return 0;
+	return e >= ft ? 256 : e * 256 / ft;
+}
+
+int CMapData::iPlayerStepPhase(char * cPlayerName, DWORD dwNow, BOOL bMore)
+{	for (int dX = 8; dX <= 9 + VIEW_TILES_X; dX++)
+	for (int dY = 8; dY <= 26; dY++)
+		if (memcmp(m_Data[dX][dY].m_cOwnerName, cPlayerName, 10) == 0) return iStepPhase(dX, dY, dwNow, bMore);
+	return 0;
+}
+
 int CMapData::iObjectFrameCounter(char * cPlayerName, short sViewPointX, short sViewPointY)
 {
 	int dX,dY, sVal;
@@ -1819,7 +1845,11 @@ int CMapData::iObjectFrameCounter(char * cPlayerName, short sViewPointX, short s
 	sCenterY = (sVal / 32) + 8;
 	m_sRectX = m_pGame->m_sVDL_X - m_sPivotX;
 	m_sRectY = m_pGame->m_sVDL_Y - m_sPivotY;
+#ifdef __EMSCRIPTEN__
+	if ((dwTime - S_dwUpdateTime) >= 15) bAutoUpdate = TRUE; // redraw every browser tick (<= ~66/s): the walk is interpolated between steps
+#else
 	if ((dwTime - S_dwUpdateTime) > 40) bAutoUpdate = TRUE;
+#endif
 	dynObjsNeedUpdate = (dwTime - m_dwDOframeTime) > 100;
 
 	//for (dX = 0; dX < MapDataSIZEX; dX++)
@@ -2017,6 +2047,7 @@ int CMapData::iObjectFrameCounter(char * cPlayerName, short sViewPointX, short s
 
 
 				dwFrameTime = m_stFrame[m_Data[dX][dY].m_sOwnerType][m_Data[dX][dY].m_cOwnerAction].m_sFrameTime + iDelay;
+				m_Data[dX][dY].m_dwOwnerFrameTime = dwFrameTime;
 
 				if ((dwTime - m_Data[dX][dY].m_dwOwnerTime) > dwFrameTime)
 				{	
@@ -2029,7 +2060,9 @@ int CMapData::iObjectFrameCounter(char * cPlayerName, short sViewPointX, short s
 					{	
 						m_Data[dX][dY].m_cOwnerFrame++;
 					}
-					m_Data[dX][dY].m_dwOwnerTime = dwTime;
+					// single step: keep the overshoot of the tick, so a 70 ms step is not stretched to a whole number of browser ticks
+					m_Data[dX][dY].m_dwOwnerTime = (dwFrameTime && (dwTime - m_Data[dX][dY].m_dwOwnerTime) < dwFrameTime*2) ? m_Data[dX][dY].m_dwOwnerTime + dwFrameTime : dwTime;
+					if (isClientPlayer) m_dwStepIdeal = m_Data[dX][dY].m_dwOwnerTime;
 					if (iRet == 0)
 					{	
 						iRet = -1;

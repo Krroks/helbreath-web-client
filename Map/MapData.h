@@ -60,6 +60,8 @@ public:
 	BOOL bGetIsLocateable(short sX, short sY);
 	BOOL bSetItem(short sX, short sY, short sItemSpr, short sItemSprFrame, char cItemColor, BOOL bDropEffect = TRUE);
 	int  iObjectFrameCounter(char * cPlayerName, short sViewPointX, short sViewPointY);
+	int  iStepPhase(int dX, int dY, DWORD dwNow, BOOL bMore);		// 0..256: progress inside the current walk/run step of a player
+	int  iPlayerStepPhase(char * cPlayerName, DWORD dwNow, BOOL bMore);
 
 	int getChatMsgIndex(WORD wObjectID) const;
 
@@ -73,6 +75,7 @@ public:
 		short m_sFrameTime;
 	} m_stFrame[TOTALCHARACTERS][TOTALACTION];
 	DWORD m_dwFrameTime;
+	DWORD m_dwStepIdeal;		// web: ideal end time of the player's last animation step (a chained move starts there)
 	DWORD m_dwDOframeTime;
 	DWORD m_dwFrameCheckTime;
 	int m_iObjectIDcacheLocX[30000];
