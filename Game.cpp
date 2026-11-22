@@ -18048,8 +18048,8 @@ void CGame::DrawDialogBox_IconPannel(short msX, short msY)
 
 	// CLEROTH - LU
 	if ( m_iLU_Point > 0 ) {
-			// frame 17 is the hunger tube cover now: the hover highlight is gone
-			m_pSprite[SPRID_INTERFACE_ND_ICONPANNEL]->PutSpriteFast(322, 434, 18, dwTime);
+			// frame 17 is the hunger tube cover now: the hover highlight is gone; the icon sits right of the tube (x 320-331)
+			m_pSprite[SPRID_INTERFACE_ND_ICONPANNEL]->PutSpriteFast(335, 434, 18, dwTime);
 	}
 
 	if ((msY > 436) && (msY < 478)) // Menu Icons
