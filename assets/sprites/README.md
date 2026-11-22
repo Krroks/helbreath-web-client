@@ -9,8 +9,8 @@ The client reads these from `run/client/SPRITES/`; this folder keeps the version
 | `GameDialog.pak` | Korea 2024 HUD and dialog boxes; sheet 0 frame 0 is the 4.08 System Menu window | Korea 2024 pak + `bmp16to24.py` + `kr_sysmenu.py` |
 | `DialogText.pak` | Korea 2024 window titles and buttons | Korea 2024 `dialogtext.pak` + `bmp16to24.py` |
 | `interface2.pak` | Korea 2024 HUD extras, small font, F1 help, crafting | Korea 2024 pak + `bmp16to24.py` |
-| `interface.pak` | 3.0 cursor and sprite font (what Korea 2024 ships) | History `sprites/3.0/interface.pak` |
-| `lgn_newacc.lpk` | create-account screen: the official 2.02 "The Crusade" board and buttons | `newacc_202.py` (History `sprites/2.02/New-Dialog.pak`, sheets 3 and 8) |
+| `interface.pak` | 3.0 cursor and sprite font (what Korea 2024 ships) | the 3.0 client's `interface.pak` |
+| `lgn_newacc.lpk` | create-account screen: the official 2.02 "The Crusade" board and buttons | `newacc_202.py` (the 2.02 client's `New-Dialog.pak`, sheets 3 and 8) |
 
-Korea 2024 paks: the decrypted copies in https://github.com/Original-Helbreath/History (`derived/sprites/korea-2024/`).
+Korea 2024 paks: decrypted copies of the Korea 2024 client's sprites.
 The client reads only 1/4/8/24-bit BMP sheets, hence `bmp16to24.py` for the Korean RGB555 ones.
