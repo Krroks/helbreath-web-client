@@ -907,6 +907,7 @@ public:
 	short m_sMCX, m_sMCY;
 	short m_sCommX, m_sCommY;
 	int   m_iCastingMagicType;
+	BOOL  m_bIsGM = FALSE; // from MSGID_RESPONSE_INITPLAYER: GM spells (cost < 0) are listed only to GMs
 	short m_sDamageMove, m_sDamageMoveAmount;
 	short m_sAppr1_IE, m_sAppr2_IE, m_sAppr3_IE, m_sAppr4_IE;
 	int m_iStatus_IE;

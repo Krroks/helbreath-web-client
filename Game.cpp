@@ -2591,6 +2591,7 @@ void CGame::GameRecvMsgHandler(DWORD dwMsgSize, char * Data)
 		break;
 
 	case MSGID_RESPONSE_INITPLAYER:
+		m_bIsGM = (dwMsgSize > 6) && (Data[6] != 0);
 		InitPlayerResponseHandler(Data);
 		break;
 
@@ -20143,7 +20144,7 @@ void CGame::DlgBoxClick_MagicShop(short msX, short msY)
 
 	iYloc = 0;
 	for (i = 0; i < 9; i++) {
-		if ((m_pMagicCfgList[iCPivot + i] != NULL) && (m_pMagicCfgList[iCPivot + i]->m_bIsVisible)) {
+		if ((m_pMagicCfgList[iCPivot + i] != NULL) && (m_pMagicCfgList[iCPivot + i]->m_bIsVisible) && (m_bIsGM || m_pMagicCfgList[iCPivot + i]->m_sValue3 >= 0)) {
 			if ((msX >= sX + iAdjX + 44) && (msX <= sX + iAdjX + 135 + 44) && (msY >= sY + iAdjY + 70 + iYloc +35) && (msY <= sY + iAdjY + 70 + 14 + iYloc +35)) {
 				if (m_cMagicMastery[iCPivot + i] == 0)
 				{	bSendCommand(MSGID_COMMAND_COMMON, COMMONTYPE_REQ_STUDYMAGIC, NULL, NULL, NULL, NULL, m_pMagicCfgList[iCPivot + i]->m_cName);
@@ -20440,9 +20441,10 @@ void CGame::DlgBoxClick_ItemSellorRepair(short msX, short msY)
 int CGame::iGetLevelExp(int iLevel)
 {int iRet;
 	if (iLevel == 0) return 0;
-	//iRet = iGetLevelExp(iLevel - 1) + iLevel * ( 50 + (iLevel * (iLevel / 17) * (iLevel / 17) ) );
-	
-	iRet = (iLevel * iLevel) + iLevel * ( 50 + (iLevel * (iLevel / 17) * (iLevel / 17) ) );
+	// 3.82 cumulative table, as the Rust server (game.rs level_exp); saturates at INT_MAX past ~level 290
+	long long t = 0;
+	for (long long k = 1; k <= iLevel; k++) t += k * (50 + k * (k / 17) * (k / 17));
+	iRet = (t > 0x7FFFFFFF) ? 0x7FFFFFFF : (int)t;
 
 	return iRet;
 }
@@ -34397,7 +34399,7 @@ void CGame::DrawDialogBox_MagicShop(short msX, short msY, short msZ)
 	iYloc = 0;
 	for (i = 0; i < 9; i++) 
 	{
-		if ((m_pMagicCfgList[iCPivot + i] != NULL) && (m_pMagicCfgList[iCPivot + i]->m_bIsVisible)) 
+		if ((m_pMagicCfgList[iCPivot + i] != NULL) && (m_pMagicCfgList[iCPivot + i]->m_bIsVisible) && (m_bIsGM || m_pMagicCfgList[iCPivot + i]->m_sValue3 >= 0)) 
 		{
 			wsprintf(cTxt, "%s", m_pMagicCfgList[iCPivot + i]->m_cName);
 			m_Misc.ReplaceString(cTxt, '-', ' ');
