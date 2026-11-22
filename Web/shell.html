@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Helbreath</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  /* 854x480 (16:9) game picture, scaled to the window and never smoothed */
+  #canvas { image-rendering: pixelated; image-rendering: crisp-edges; cursor: none; outline: none; }
+  #status { position: fixed; left: 8px; bottom: 8px; color: #888; font: 12px monospace; }
+</style>
+</head>
+<body>
+<canvas id="canvas" width="854" height="480" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+<div id="status"></div>
+<script>
+  function fit() {
+    const c = document.getElementById('canvas');
+    const k = Math.min(innerWidth / 854, innerHeight / 480); // fill the window, keep 16:9
+    c.style.width = 854 * k + 'px'; c.style.height = 480 * k + 'px';
+  }
+  addEventListener('resize', fit); fit();
+  const q = new URLSearchParams(location.search);
+  var Module = {
+    canvas: document.getElementById('canvas'),
+    hbDataUrl: q.get('data') || 'data',            // game folder (sprites/, mapdata/, sounds/ ...)
+    hbBridgeUrl: q.get('bridge') || undefined,       // e.g. ws://127.0.0.1:8000
+    print: t => console.log(t),
+    printErr: t => console.warn(t),
+    setStatus: t => { document.getElementById('status').textContent = t; },
+  };
+  // Browsers only start audio after a user gesture.
+  addEventListener('pointerdown', () => { const s = Module.hbSound; if (s && s.ctx && s.ctx.state !== 'running') s.ctx.resume(); });
+</script>
+{{{ SCRIPT }}}
+</body>
+</html>

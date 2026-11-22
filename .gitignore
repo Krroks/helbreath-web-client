@@ -1,0 +1,6 @@
+*.ncb
+*.opt
+*.suo
+*.user
+Web/out/
+Web/obj*/
