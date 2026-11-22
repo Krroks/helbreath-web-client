@@ -866,10 +866,18 @@ void CGame::Quit()
 }
 
 
+// A sheet whose frame 0 (the background) is as wide as the frame was drawn for 16:9: that screen uses the whole width.
+static BOOL bIsWideSheet(CSprite * pSpr)
+{	return (pSpr != NULL) && (pSpr->m_stBrush != NULL) && (pSpr->m_stBrush[0].szx >= SCREENX);
+}
+
 void CGame::UpdateScreen()
 { 	G_dwGlobalTime = timeGetTime();
-	// 640x480 screens sit in the middle of the 16:9 frame; the world uses all of it
-	m_DDraw.m_sShiftX = m_DInput.m_sShiftX = (m_cGameMode == GAMEMODE_ONMAINGAME) ? 0 : (SCREENX-640)/2;
+	// 640x480 screens sit in the middle of the 16:9 frame; the world and the 16:9 screens use all of it
+	BOOL bFull = (m_cGameMode == GAMEMODE_ONMAINGAME) ||
+		((m_cGameMode == GAMEMODE_ONMAINMENU) && bIsWideSheet(m_pSprite[SPRID_INTERFACE_ND_MAINMENU])) ||
+		((m_cGameMode == GAMEMODE_ONLOADING) && bIsWideSheet(m_pSprite[SPRID_INTERFACE_ND_LOADING]));
+	m_DDraw.m_sShiftX = m_DInput.m_sShiftX = bFull ? 0 : UISHIFTX;
 	switch (m_cGameMode) {
 
 	case GAMEMODE_ONAGREEMENT:
@@ -2716,6 +2724,7 @@ void CGame::UpdateScreen_OnMainMenu()
  DWORD dwTime = G_dwGlobalTime;
  m_iItemDropCnt = 0;
  m_bItemDrop = FALSE;
+ short ox = UISHIFTX - m_DDraw.m_sShiftX; // the 16:9 menu sheet keeps the 4:3 layout 107 px to the right
 	
 	if (m_cGameModeCount == 0) {
 
@@ -2732,10 +2741,10 @@ void CGame::UpdateScreen_OnMainMenu()
 		
 		pMI = new class CMouseInterface; 
 
-		pMI->AddRect(385,178,549,200);
-		pMI->AddRect(385,216,549,238);
-		pMI->AddRect(385,255,549,277);
-		m_DInput.m_sX = 400 + m_DInput.m_sShiftX;
+		pMI->AddRect(385+ox,178,549+ox,200);
+		pMI->AddRect(385+ox,216,549+ox,238);
+		pMI->AddRect(385+ox,255,549+ox,277);
+		m_DInput.m_sX = 400 + UISHIFTX;
 		m_DInput.m_sY = 240;
 
 		m_cCurFocus = 1;
@@ -2749,21 +2758,22 @@ void CGame::UpdateScreen_OnMainMenu()
  
 	m_DDraw.ClearBackB4();
 
-	DrawNewDialogBox(SPRID_INTERFACE_ND_MAINMENU, -1, -1, 0, TRUE);
+	// the 4:3 sheet was drawn 1 px up-left; the 16:9 one fills the frame from (0,0), like the loading screen
+	DrawNewDialogBox(SPRID_INTERFACE_ND_MAINMENU, ox ? 0 : -1, ox ? 0 : -1, 0, TRUE);
 
 
 
 	switch (m_cCurFocus) {
 
 	case 1:
-		m_pSprite[SPRID_INTERFACE_ND_MAINMENU]->PutSpriteFast(114 , 159, 1, dwTime);
+		m_pSprite[SPRID_INTERFACE_ND_MAINMENU]->PutSpriteFast(114+ox, 159, 1, dwTime);
 		break;
 	case 2:
-		m_pSprite[SPRID_INTERFACE_ND_MAINMENU]->PutSpriteFast(82, 197, 2, dwTime);
+		m_pSprite[SPRID_INTERFACE_ND_MAINMENU]->PutSpriteFast(82+ox, 197, 2, dwTime);
 		break;
 
 	case 3:
-		m_pSprite[SPRID_INTERFACE_ND_MAINMENU]->PutSpriteFast(114, 236, 3, dwTime);
+		m_pSprite[SPRID_INTERFACE_ND_MAINMENU]->PutSpriteFast(114+ox, 236, 3, dwTime);
 		break;
 	}
 
@@ -2832,9 +2842,12 @@ void CGame::UpdateScreen_OnMainMenu()
 		}
 	}
 
-//	if ((msX >= 112) && (msY >= 150) && (msX <= 247) && (msY <= 191)) m_cCurFocus = 1;
-//	if ((msX >= 73) && (msY >= 192) && (msX <= 281) && (msY <= 230)) m_cCurFocus = 2;
-//	if ((msX >= 120) && (msY >= 231) && (msX <= 239) && (msY <= 262)) m_cCurFocus = 3;
+	// the button under the mouse lights up (same rects as the clicks)
+	if ((msX > 385+ox) && (msX < 549+ox)) {
+		if ((msY > 178) && (msY < 200)) m_cCurFocus = 1;
+		if ((msY > 216) && (msY < 238)) m_cCurFocus = 2;
+		if ((msY > 255) && (msY < 277)) m_cCurFocus = 3;
+	}
 	
 //	if (m_cGameModeCount < 6) m_DDraw.DrawShadowBox(0,0,639,479);
 //	if (m_cGameModeCount < 2) m_DDraw.DrawShadowBox(0,0,639,479);
@@ -3670,7 +3683,8 @@ void CGame::UpdateScreen_OnLoading_Progress()
 	DrawVersion(TRUE);
 	int iBarWidth;
 	iBarWidth= (int)m_cLoading;
-	m_pSprite[SPRID_INTERFACE_ND_LOADING]->PutSpriteFastWidth(472,442, 1, iBarWidth, G_dwGlobalTime);
+	// the 16:9 sheet has its "Loading Data ..." at the bottom right of the whole frame
+	m_pSprite[SPRID_INTERFACE_ND_LOADING]->PutSpriteFastWidth(bIsWideSheet(m_pSprite[SPRID_INTERFACE_ND_LOADING]) ? 686 : 472, 442, 1, iBarWidth, G_dwGlobalTime);
 	m_DDraw.iFlip();
 }
 
