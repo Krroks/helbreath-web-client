@@ -4451,6 +4451,7 @@ void CGame::InitGameSettings()
 	m_stPartyMember.reserve(MAXPARTYMEMBERS);
 
 	m_iLU_Point = 0;
+	m_iHunger = 100;
 	m_luStat[STAT_STR] = m_luStat[STAT_VIT] = m_luStat[STAT_DEX] = m_luStat[STAT_INT] = m_luStat[STAT_MAG] = m_luStat[STAT_CHR] = 0;
 	m_bDialogTrans   = FALSE;
 	m_cWhetherStatus = NULL;
@@ -18047,9 +18048,8 @@ void CGame::DrawDialogBox_IconPannel(short msX, short msY)
 
 	// CLEROTH - LU
 	if ( m_iLU_Point > 0 ) {
-			if ((322 <= msX) && (355 >= msX) && (434 < msY) && (475 > msY))
-				 m_pSprite[SPRID_INTERFACE_ND_ICONPANNEL]->PutSpriteFast(322, 434, 17, dwTime);
-			else m_pSprite[SPRID_INTERFACE_ND_ICONPANNEL]->PutSpriteFast(322, 434, 18, dwTime);
+			// frame 17 is the hunger tube cover now: the hover highlight is gone
+			m_pSprite[SPRID_INTERFACE_ND_ICONPANNEL]->PutSpriteFast(322, 434, 18, dwTime);
 	}
 
 	if ((msY > 436) && (msY < 478)) // Menu Icons
@@ -18145,16 +18145,20 @@ void CGame::DrawDialogBox_GaugePannel()
 	wsprintf(G_cTxt, "%d", iTemp,iMaxPoint);
 	PutString_SprNum(228, 436, G_cTxt, 100, 100, 200);
 
-	// Experience Gauge
+	// Hunger tube (orange, right of the stamina drawer, like Korea 2024 / HB Classic): frame 17 is the empty glass,
+	// drawn from the top down over the orange fill; 100 = nothing drawn (full), 0 = all covered. 29 = frame height
+	iTemp = m_iHunger;
+	if (iTemp > 100) iTemp = 100;
+	iBarWidth = ((100 - iTemp) * 29) / 100;
+	if (iBarWidth > 0) m_pSprite[SPRID_INTERFACE_ND_ICONPANNEL]->PutSpriteFastHeight(320, 441, 17, iBarWidth, m_dwCurTime);
+
+	// Experience line: GameDialog sheet 6 frame 19 (640x3, green) over the top edge of the panel, like Korea 2024 / HB Classic
 	iMaxPoint = m_levelExpTable[m_iLevel+1] - m_levelExpTable[m_iLevel];
-	iTemp = m_iExp - m_levelExpTable[m_iLevel];
-	// iBarWidth = 167 - (iTemp*167)/iMaxPoint;
-	 if( iBarWidth < 0 ) iBarWidth = 0;
-	 if( iBarWidth > 167 ) iBarWidth = 167;
-	 m_pSprite[SPRID_INTERFACE_ND_ICONPANNEL]->PutSpriteFastWidth(147 + iBarWidth, 434+13, 13, (167-iBarWidth), m_dwCurTime);
-	 iTemp = iTemp - iMaxPoint;
-	 wsprintf(G_cTxt, "%d", iTemp);
-	 PutString_SprNum(228, 435+13, G_cTxt, 100, 100, 200);
+	if (m_iExp > m_levelExpTable[m_iLevel] && iMaxPoint > 0)
+	{	iBarWidth = (uint32)(((long long)(m_iExp - m_levelExpTable[m_iLevel]) * 640) / iMaxPoint);
+		if (iBarWidth > 640) iBarWidth = 640;
+	}else iBarWidth = 0;
+	if (iBarWidth > 0) m_pSprite[SPRID_INTERFACE_ND_ICONPANNEL]->PutSpriteFastWidth(0, 428, 19, iBarWidth, m_dwCurTime);
 }
 
 void CGame::DrawDialogBox_Text(short msX, short msY, short msZ, char cLB)
@@ -20144,7 +20148,7 @@ void CGame::DlgBoxClick_MagicShop(short msX, short msY)
 
 	iYloc = 0;
 	for (i = 0; i < 9; i++) {
-		if ((m_pMagicCfgList[iCPivot + i] != NULL) && (m_pMagicCfgList[iCPivot + i]->m_bIsVisible) && (m_bIsGM || m_pMagicCfgList[iCPivot + i]->m_sValue3 >= 0)) {
+		if ((m_pMagicCfgList[iCPivot + i] != NULL) && (m_pMagicCfgList[iCPivot + i]->m_bIsVisible) && (m_bIsGM || m_pMagicCfgList[iCPivot + i]->m_sValue2 >= 0)) {
 			if ((msX >= sX + iAdjX + 44) && (msX <= sX + iAdjX + 135 + 44) && (msY >= sY + iAdjY + 70 + iYloc +35) && (msY <= sY + iAdjY + 70 + 14 + iYloc +35)) {
 				if (m_cMagicMastery[iCPivot + i] == 0)
 				{	bSendCommand(MSGID_COMMAND_COMMON, COMMONTYPE_REQ_STUDYMAGIC, NULL, NULL, NULL, NULL, m_pMagicCfgList[iCPivot + i]->m_cName);
@@ -34399,7 +34403,7 @@ void CGame::DrawDialogBox_MagicShop(short msX, short msY, short msZ)
 	iYloc = 0;
 	for (i = 0; i < 9; i++) 
 	{
-		if ((m_pMagicCfgList[iCPivot + i] != NULL) && (m_pMagicCfgList[iCPivot + i]->m_bIsVisible) && (m_bIsGM || m_pMagicCfgList[iCPivot + i]->m_sValue3 >= 0)) 
+		if ((m_pMagicCfgList[iCPivot + i] != NULL) && (m_pMagicCfgList[iCPivot + i]->m_bIsVisible) && (m_bIsGM || m_pMagicCfgList[iCPivot + i]->m_sValue2 >= 0)) 
 		{
 			wsprintf(cTxt, "%s", m_pMagicCfgList[iCPivot + i]->m_cName);
 			m_Misc.ReplaceString(cTxt, '-', ' ');
@@ -38142,6 +38146,7 @@ void CGame::NotifyMsg_Hunger(char * Data)
 
 	cp = (char *)(Data + INDEX2_MSGTYPE + 2);
 	cHLv = *cp;
+	m_iHunger = (unsigned char)cHLv;
 
 	if ((cHLv <= 40) && (cHLv > 30)) AddEventList(NOTIFYMSG_HUNGER1, 10);//"
 	if ((cHLv <= 25) && (cHLv > 20)) AddEventList(NOTIFYMSG_HUNGER2, 10);//"

@@ -1061,52 +1061,52 @@ void CMapData::ShiftMapData(char cDir)
 	switch (cDir) {
 	case 1:
 		for (iy = 0; iy < 15; iy++)
-		for (ix = 0; ix < 21; ix++)
+		for (ix = 0; ix < VIEW_TILES_X; ix++)
 			memcpy(&m_pTmData[4+5+ix][6+5+iy], &m_Data[4+5+ix][5+5+iy], sizeof(class CTile));
 		m_sPivotY--;
 		break;
 	case 2:
 		for (iy = 0; iy < 15; iy++)
-		for (ix = 0; ix < 20; ix++)
+		for (ix = 0; ix < VIEW_TILES_X - 1; ix++)
 			memcpy(&m_pTmData[4+5+ix][6+5+iy], &m_Data[5+5+ix][5+5+iy], sizeof(class CTile));
 		m_sPivotX++;
 		m_sPivotY--;
 		break;
 	case 3:
 		for (iy = 0; iy < 16; iy++)
-		for (ix = 0; ix < 20; ix++)
+		for (ix = 0; ix < VIEW_TILES_X - 1; ix++)
 			memcpy(&m_pTmData[4+5+ix][5+5+iy], &m_Data[5+5+ix][5+5+iy], sizeof(class CTile));
 		m_sPivotX++;
 		break;
 	case 4:
 		for (iy = 0; iy < 15; iy++)
-		for (ix = 0; ix < 20; ix++)
+		for (ix = 0; ix < VIEW_TILES_X - 1; ix++)
 			memcpy(&m_pTmData[4+5+ix][5+5+iy], &m_Data[5+5+ix][6+5+iy], sizeof(class CTile));
 		m_sPivotX++;
 		m_sPivotY++;
 		break;
 	case 5:
 		for (iy = 0; iy < 15; iy++)
-		for (ix = 0; ix < 21; ix++)
+		for (ix = 0; ix < VIEW_TILES_X; ix++)
 			memcpy(&m_pTmData[4+5+ix][5+5+iy], &m_Data[4+5+ix][6+5+iy], sizeof(class CTile));
 		m_sPivotY++;
 		break;
 	case 6:
 		for (iy = 0; iy < 15; iy++)
-		for (ix = 0; ix < 20; ix++)
+		for (ix = 0; ix < VIEW_TILES_X - 1; ix++)
 			memcpy(&m_pTmData[5+5+ix][5+5+iy], &m_Data[4+5+ix][6+5+iy], sizeof(class CTile));
 		m_sPivotX--;
 		m_sPivotY++;
 		break;
 	case 7:
 		for (iy = 0; iy < 16; iy++)
-		for (ix = 0; ix < 20; ix++)
+		for (ix = 0; ix < VIEW_TILES_X - 1; ix++)
 			memcpy(&m_pTmData[5+5+ix][5+5+iy], &m_Data[4+5+ix][5+5+iy], sizeof(class CTile));
 		m_sPivotX--;
 		break;
 	case 8:
 		for (iy = 0; iy < 15; iy++)
-		for (ix = 0; ix < 20; ix++)
+		for (ix = 0; ix < VIEW_TILES_X - 1; ix++)
 			memcpy(&m_pTmData[5+5+ix][6+5+iy], &m_Data[4+5+ix][5+5+iy], sizeof(class CTile));
 		m_sPivotX--;
 		m_sPivotY--;
@@ -1824,7 +1824,7 @@ int CMapData::iObjectFrameCounter(char * cPlayerName, short sViewPointX, short s
 
 	//for (dX = 0; dX < MapDataSIZEX; dX++)
 	//for (dY = 0; dY < MapDataSIZEY; dY++)
-	for (dX = 8; dX <= 31; dX++) //19 +/- 11
+	for (dX = 8; dX <= 9 + VIEW_TILES_X; dX++) // the data window starts at column 9 and is VIEW_TILES_X wide (was 8..31 for 21 columns)
 	for (dY = 8; dY <= 26; dY++) //17 +/- 9
 	{	
 		// Dynamic Object
@@ -2045,7 +2045,7 @@ int CMapData::iObjectFrameCounter(char * cPlayerName, short sViewPointX, short s
 					}
 					if (m_Data[dX][dY].m_cOwnerFrame > m_stFrame[m_Data[dX][dY].m_sOwnerType][m_Data[dX][dY].m_cOwnerAction].m_sMaxFrame)
 					{	
-						if (  (m_sRectX <= dX) && ((m_sRectX + 20) >= dX)
+						if (  (m_sRectX <= dX) && ((m_sRectX + VIEW_TILES_X - 1) >= dX)
 							&& (m_sRectY <= dY) && ((m_sRectY + 15) >= dY)) {
 								if (m_Data[dX][dY].m_cOwnerAction == OBJECTDYING) {	
 									m_Data[dX][dY].m_wDeadObjectID        = m_Data[dX][dY].m_wObjectID;

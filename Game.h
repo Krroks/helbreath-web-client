@@ -845,6 +845,7 @@ public:
 	int m_iHP;//was int			// Hit Point
 	int m_iMP;//was int			// Mana Point
 	int m_iSP;//was int			// Staminar Point
+	int m_iHunger;					// Hunger level 0..100 (orange tube of the HUD), from NOTIFY_HUNGER
 	int m_iAC;						// Armour Class
 	int m_iTHAC0;					// To Hit Armour Class 0
 
