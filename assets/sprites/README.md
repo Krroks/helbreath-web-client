@@ -11,6 +11,8 @@ The client reads these from `run/client/SPRITES/`; this folder keeps the version
 | `interface2.pak` | Korea 2024 HUD extras, small font, F1 help, crafting | Korea 2024 pak + `bmp16to24.py` |
 | `interface.pak` | 3.0 cursor and sprite font (what Korea 2024 ships) | History `sprites/3.0/interface.pak` |
 | `lgn_newacc.lpk` | create-account screen: the official 2.02 "The Crusade" board and buttons | `newacc_202.py` (History `sprites/2.02/New-Dialog.pak`, sheets 3 and 8) |
+| `EventIcons.pak` | the v8.00 "EXP" and "EK" event badges (27x29, one sheet, frame 0 = Double EXP, 1 = Double EK), drawn top right while an event runs | `make_event_icons.py` (cut from `run/history_sheets/v800/GameDialog/006.png`, frames 30 and 31 of the v8.00 `GameDialog.pak` sheet 6) |
+| `LowHealth.pak` | the v8.00 red screen-edge vignette of the low-health warning (854x480, dark middle = colour key), drawn translucent while HP is under 25 % | `make_lowhealth_vignette.py` (from `run/history_sheets/v800/hud1/000.png`) |
 
 Korea 2024 paks: the decrypted copies in https://github.com/Original-Helbreath/History (`derived/sprites/korea-2024/`).
 The client reads only 1/4/8/24-bit BMP sheets, hence `bmp16to24.py` for the Korean RGB555 ones.

@@ -20,41 +20,66 @@ EM_JS(int, hbjs_snd_create, (const BYTE *pcm, int bytes, int rate, int channels,
     S.bufs[id] = { buf: buf, src: null };
     return id;
 });
+// Starts the AudioBuffer of id as the source of that id (shared by hbjs_snd_play and the end of an async decode).
+EM_JS(void, hbjs_snd_init, (), {
+    const S = Module.hbSound || (Module.hbSound = { ctx: null, next: 1, bufs: {} });
+    Module.hbSndStart = (id, loop, vol, pan) => {
+        const b = S.bufs[id];
+        if (!b) return;
+        if (b.src) { try { b.src.stop(); } catch (e) {} }
+        const src = S.ctx.createBufferSource();
+        src.buffer = b.buf;
+        src.loop = !!loop;
+        const gain = S.ctx.createGain();
+        gain.gain.value = Math.pow(10, vol / 2000);  // DirectSound volume is in 1/100 dB
+        // The music is 8-8.8 kHz: the browser's upsampling to 48 kHz leaves a metallic hiss above the source Nyquist
+        // that DirectSound's mixer filtered out. Two low-passes just under it remove it (22 kHz sounds skip this).
+        let head = src;
+        if (b.buf.sampleRate < 16000)
+            for (let k = 0; k < 2; k++) {
+                const lp = S.ctx.createBiquadFilter();
+                lp.type = 'lowpass'; lp.frequency.value = b.buf.sampleRate * 0.45; lp.Q.value = 0.7071;
+                head = head.connect(lp);
+            }
+        const panner = S.ctx.createStereoPanner ? S.ctx.createStereoPanner() : null;
+        if (panner) { panner.pan.value = Math.max(-1, Math.min(1, pan / 10000)); head.connect(gain).connect(panner).connect(S.ctx.destination); }
+        else head.connect(gain).connect(S.ctx.destination);
+        src.onended = () => { if (b.src === src) b.src = null; };
+        b.src = src; b.gain = gain; b.panner = panner;
+        src.start();
+    };
+});
+// Encoded audio (mp3): the browser decodes it asynchronously, so the buffer exists at once and starts playing when ready.
+EM_JS(int, hbjs_snd_decode, (const BYTE *data, int bytes), {
+    const S = Module.hbSound || (Module.hbSound = { ctx: null, next: 1, bufs: {} });
+    if (!S.ctx) S.ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const id = S.next++;
+    const rec = S.bufs[id] = { buf: null, src: null, want: null };
+    S.ctx.decodeAudioData(HEAPU8.slice(data, data + bytes).buffer).then((buf) => {
+        rec.buf = buf;
+        const w = rec.want; rec.want = null;
+        if (w && S.bufs[id] === rec) Module.hbSndStart(id, w.loop, w.vol, w.pan);
+    }).catch((e) => console.warn('audio decode failed', e));
+    return id;
+});
 EM_JS(void, hbjs_snd_play, (int id, int loop, int vol, int pan), {
     const S = Module.hbSound, b = S && S.bufs[id];
     if (!b) return;
-    if (b.src) { try { b.src.stop(); } catch (e) {} }
-    const src = S.ctx.createBufferSource();
-    src.buffer = b.buf;
-    src.loop = !!loop;
-    const gain = S.ctx.createGain();
-    gain.gain.value = Math.pow(10, vol / 2000);  // DirectSound volume is in 1/100 dB
-    // The music is 8-8.8 kHz: the browser's upsampling to 48 kHz leaves a metallic hiss above the source Nyquist
-    // that DirectSound's mixer filtered out. Two low-passes just under it remove it (22 kHz sounds skip this).
-    let head = src;
-    if (b.buf.sampleRate < 16000)
-        for (let k = 0; k < 2; k++) {
-            const lp = S.ctx.createBiquadFilter();
-            lp.type = 'lowpass'; lp.frequency.value = b.buf.sampleRate * 0.45; lp.Q.value = 0.7071;
-            head = head.connect(lp);
-        }
-    const panner = S.ctx.createStereoPanner ? S.ctx.createStereoPanner() : null;
-    if (panner) { panner.pan.value = Math.max(-1, Math.min(1, pan / 10000)); head.connect(gain).connect(panner).connect(S.ctx.destination); }
-    else head.connect(gain).connect(S.ctx.destination);
-    src.onended = () => { if (b.src === src) b.src = null; };
-    b.src = src; b.gain = gain; b.panner = panner;
-    src.start();
+    if (!b.buf) { b.want = { loop: loop, vol: vol, pan: pan }; return; }  // still decoding: start when ready
+    Module.hbSndStart(id, loop, vol, pan);
 });
 EM_JS(void, hbjs_snd_stop, (int id), {
     const b = Module.hbSound && Module.hbSound.bufs[id];
+    if (b) b.want = null;
     if (b && b.src) { try { b.src.stop(); } catch (e) {} b.src = null; }
 });
 EM_JS(int, hbjs_snd_playing, (int id), {
     const b = Module.hbSound && Module.hbSound.bufs[id];
-    return b && b.src ? 1 : 0;
+    return b && (b.src || b.want) ? 1 : 0;
 });
 EM_JS(void, hbjs_snd_set, (int id, int vol, int pan), {
     const b = Module.hbSound && Module.hbSound.bufs[id];
+    if (b && b.want) { b.want.vol = vol; b.want.pan = pan; return; }
     if (!b || !b.src) return;
     b.gain.gain.value = Math.pow(10, vol / 2000);
     if (b.panner) b.panner.pan.value = Math.max(-1, Math.min(1, pan / 10000));
@@ -67,6 +92,7 @@ EM_JS(void, hbjs_snd_free, (int id), {
 });
 
 HRESULT DirectSoundCreate(void *, IDirectSound **out, void *) {
+    hbjs_snd_init();
     *out = new IDirectSound;
     return DS_OK;
 }
@@ -99,6 +125,12 @@ HRESULT IDirectSoundBuffer::Lock(DWORD, DWORD, LPVOID *p1, LPDWORD n1, LPVOID *p
 HRESULT IDirectSoundBuffer::Unlock(LPVOID, DWORD, LPVOID, DWORD) {
     if (id) hbjs_snd_free(id);
     id = hbjs_snd_create(data, (int)size, (int)fmt.nSamplesPerSec, fmt.nChannels ? fmt.nChannels : 1, fmt.wBitsPerSample ? fmt.wBitsPerSample : 16);
+    return DS_OK;
+}
+
+HRESULT IDirectSoundBuffer::LoadEncoded(const BYTE *bytes, DWORD n) {
+    if (id) hbjs_snd_free(id);
+    id = hbjs_snd_decode(bytes, (int)n);
     return DS_OK;
 }
 

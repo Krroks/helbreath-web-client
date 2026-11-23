@@ -109,6 +109,28 @@ BOOL CSoundBuffer::bCreateBuffer_LoadWavFileContents(char cBufferIndex)
 	
 	if (m_lpDSB[cBufferIndex] != NULL) return FALSE;
 
+	{	size_t n = strlen(m_cWavFileName);
+		if (n > 4 && m_cWavFileName[n-4] == '.' && (m_cWavFileName[n-3] | 0x20) == 'm' && (m_cWavFileName[n-2] | 0x20) == 'p' && m_cWavFileName[n-1] == '3')
+		{
+#ifdef __EMSCRIPTEN__
+			// the browser decodes the mp3 (see IDirectSoundBuffer::LoadEncoded); the buffer plays once it is ready
+			FILE * pMp3 = fopen(m_cWavFileName, "rb");
+			if (pMp3 == NULL) return FALSE;
+			fseek(pMp3, 0, SEEK_END);
+			long lMp3Size = ftell(pMp3);
+			fseek(pMp3, 0, SEEK_SET);
+			BYTE * pMp3Data = (lMp3Size > 0) ? new BYTE[lMp3Size] : NULL;
+			BOOL bMp3Ok = (pMp3Data != NULL) && (fread(pMp3Data, lMp3Size, 1, pMp3) == 1) && _bCreateSoundBuffer(cBufferIndex, 1, 22050, 8, 1, FALSE);
+			fclose(pMp3);
+			if (bMp3Ok) m_lpDSB[cBufferIndex]->LoadEncoded(pMp3Data, (DWORD)lMp3Size);
+			delete [] pMp3Data;
+			return bMp3Ok;
+#else
+			return FALSE; // shortcut: only the web build plays mp3; the DirectSound client would need a decoder library
+#endif
+		}
+	}
+
 	pFile = fopen(m_cWavFileName, "rb");
 	if (pFile == NULL) return FALSE;
 		

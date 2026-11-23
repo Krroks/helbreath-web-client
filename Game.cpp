@@ -68,6 +68,28 @@ void CGame::ReadSettings()
 	else
 		m_showAllDmg = val;
 
+	if((val = ReadSettingsVar("AllowCameraShake")) == -1)
+		m_bAllowCameraShake = TRUE;
+	else
+		m_bAllowCameraShake = val;
+
+	if((val = ReadSettingsVar("ShowGroundNames")) == -1)
+		m_bShowGroundNames = FALSE;
+	else
+		m_bShowGroundNames = val;
+	m_iGroundNamesMap = -1;
+	m_dwGroundNamesReq = 0;
+
+	if((val = ReadSettingsVar("ShowTyping")) == -1)
+		m_bShowTyping = TRUE;
+	else
+		m_bShowTyping = val;
+
+	if((val = ReadSettingsVar("LowHealthWarn")) == -1)
+		m_bLowHealthWarn = TRUE;
+	else
+		m_bLowHealthWarn = val;
+
 	if((val = ReadSettingsVar("BigItems")) == -1) 
 		m_bigItems = FALSE;
 	else
@@ -172,6 +194,10 @@ void CGame::WriteSettings()
 	WriteSettingsVar("ShowFPS", m_bShowFPS);
 	WriteSettingsVar("ShowGrid", m_showGrid);
 	WriteSettingsVar("ShowAllDmg", m_showAllDmg);
+	WriteSettingsVar("LowHealthWarn", m_bLowHealthWarn);
+	WriteSettingsVar("ShowTyping", m_bShowTyping);
+	WriteSettingsVar("ShowGroundNames", m_bShowGroundNames);
+	WriteSettingsVar("AllowCameraShake", m_bAllowCameraShake);
 	WriteSettingsVar("BigItems", m_bigItems);
 	WriteSettingsVar("PartyAutoAccept", m_partyAutoAccept);
 	WriteSettingsVar("DetailLevel", m_cDetailLevel);
@@ -254,9 +280,20 @@ CGame::CGame()
 	for (i = 0; i < MAXTILES; i++) m_pTileSpr[i] = NULL;
 	for (i = 0; i < MAXEFFECTSPR; i++) m_pEffectSpr[i] = NULL;
 	m_pBGM = NULL;
+	m_pVoice = NULL;
+	m_pEventSpr = NULL;
+	m_pTypingSpr = NULL;
+	m_bTypingSent = FALSE;
+	m_dwTypingSentTime = 0;
+	m_bItemDescLoaded = false;
+	m_pLowHealthSpr = NULL;
+	m_dwEventEnd[0] = m_dwEventEnd[1] = 0;
 	for (i = 0; i < MAXSOUNDEFFECTS; i++)
 	{	m_pCSound[i]  = NULL;
 		m_pESound[i]  = NULL;
+		m_pDSound[i]  = NULL;
+		m_pBSound[i]  = NULL;
+		m_pGSound[i]  = NULL;
 		m_pMSound[i]  = NULL;
 	}
 
@@ -805,9 +842,16 @@ void CGame::Quit()
 		if (m_pCSound[i] != NULL) delete m_pCSound[i];
 		if (m_pMSound[i] != NULL) delete m_pMSound[i];
 		if (m_pESound[i] != NULL) delete m_pESound[i];
+		if (m_pDSound[i] != NULL) delete m_pDSound[i];
+		if (m_pBSound[i] != NULL) delete m_pBSound[i];
+		if (m_pGSound[i] != NULL) delete m_pGSound[i];
 	}
 
 	if (m_pBGM != NULL) delete m_pBGM;
+	if (m_pVoice != NULL) delete m_pVoice;
+	if (m_pEventSpr != NULL) delete m_pEventSpr;
+	if (m_pTypingSpr != NULL) delete m_pTypingSpr;
+	if (m_pLowHealthSpr != NULL) delete m_pLowHealthSpr;
 
 	for (i = 0; i < 4; i++)
 	if (m_pCharList[i] != NULL) delete m_pCharList[i];
@@ -2178,6 +2222,8 @@ void CGame::DrawObjects(short sPivotX, short sPivotY, short sDivX, short sDivY, 
 						bContact = DrawObject_OnDying(indexX, indexY, ix, iy, FALSE, dwTime, msX, msY);
 						break;
 					}
+					if (m_bShowTyping && _tmp_sOwnerType >= 1 && _tmp_sOwnerType <= 6 && _tmp_cAction != OBJECTDYING)
+						DrawTypingBubble(ix + _tmp_dx, iy + _tmp_dy, _tmp_cName);
 
 					if ((bContact == TRUE) && (msY <= 431))
 					{	m_sMCX = indexX;
@@ -2660,6 +2706,14 @@ void CGame::GameRecvMsgHandler(DWORD dwMsgSize, char * Data)
 		ResponsePanningHandler(Data);
 		break;
 
+	case MSGID_RESPONSE_GROUNDITEMNAMES:
+		GroundItemNamesHandler(Data);
+		break;
+
+	case MSGID_EVENT_TYPING:
+		TypingEventHandler(Data);
+		break;
+
 	case MSGID_RESPONSE_FIGHTZONE_RESERVE:
 		ReserveFightzoneResponseHandler(Data);
 		break;
@@ -2745,6 +2799,7 @@ void CGame::UpdateScreen_OnMainMenu()
 			m_pSprite[SPRID_INTERFACE_ND_LOADING] = NULL;
 		}
 		EndInputString();
+		if (m_bMusicStat) StartBGM(); // v8.00 menu theme (mp3)
 		
 		pMI = new class CMouseInterface; 
 
@@ -3018,6 +3073,24 @@ void CGame::UpdateScreen_OnLoading(bool bActive)
 			if( m_hPakFile != INVALID_HANDLE_VALUE ) {
 				m_pSprite[SPRID_INTERFACE_ND_MAINMENU] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 1, FALSE);
 				m_pSprite[SPRID_INTERFACE_ND_QUIT] = new class CSprite(m_hPakFile, &m_DDraw, "New-Dialog", 2, FALSE);
+				CloseHandle(m_hPakFile);
+			}
+
+			m_hPakFile = CreateFile("sprites\\EventIcons.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
+			if( m_hPakFile != INVALID_HANDLE_VALUE ) {
+				m_pEventSpr = new class CSprite(m_hPakFile, &m_DDraw, "EventIcons", 0, FALSE);
+				CloseHandle(m_hPakFile);
+			}
+
+			m_hPakFile = CreateFile("sprites\\LowHealth.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
+			if( m_hPakFile != INVALID_HANDLE_VALUE ) {
+				m_pLowHealthSpr = new class CSprite(m_hPakFile, &m_DDraw, "LowHealth", 0, FALSE);
+				CloseHandle(m_hPakFile);
+			}
+
+			m_hPakFile = CreateFile("sprites\\Typing.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
+			if( m_hPakFile != INVALID_HANDLE_VALUE ) {
+				m_pTypingSpr = new class CSprite(m_hPakFile, &m_DDraw, "Typing", 0, FALSE);
 				CloseHandle(m_hPakFile);
 			}
 
@@ -3314,6 +3387,8 @@ void CGame::UpdateScreen_OnLoading(bool bActive)
 	case 48:
 		{	MakeSprite( "Gail",			  SPRID_MOB   + 7*8*80, 8, TRUE); // Gail (Type: 90)
 			MakeSprite( "Gate",			  SPRID_MOB   + 7*8*81, 24, TRUE);// Heldenian Gate (Type: 91)/**/
+			MakeSprite( "Scarecrow",	  SPRID_MOB   + 7*8*82, 40, TRUE);// Scarecrow (Type: 92), from the v8.00 paks
+			MakeSprite( "Princess",		  SPRID_MOB   + 7*8*92, 8, TRUE); // Princess (Type: 102), from the v8.00 paks
 			m_hPakFile = CreateFile("sprites\\Mpt.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
 			if( m_hPakFile != INVALID_HANDLE_VALUE )
 			{	for (i = 0; i < 12; i++) m_pSprite[SPRID_UNDIES_M + i + 15*0] = new class CSprite(m_hPakFile, &m_DDraw, "Mpt", i + 12*0, TRUE);
@@ -3670,9 +3745,26 @@ void CGame::UpdateScreen_OnLoading(bool bActive)
 				{	wsprintf(G_cTxt, "sounds\\M%d.wav", i);
 					m_pMSound[i] = new class CSoundBuffer(m_DSound.m_lpDS, m_DSound.m_DSCaps, G_cTxt);
 				}
-				for (i = 1; i <= 53; i++)
+				// TODO(v8.00): E54-E67 (E57 does not exist), B1-B4 and G1-G4 come from the v8.00 client but nothing plays
+				// them here yet, because we do not know what triggers them. In the v8.00 exe B1-B4 / G1-G4 are picked at random
+				// (one of four) inside the world-click handler (Ghidra FUN_00489720, in a switch whose case 0x18 plays B and case 0x0F
+				// plays G; what that switch is on is unclear). The E54+ calls take a computed number, so the caller is unknown. Once a trigger is found, call
+				// PlaySound('B' / 'G' / 'E', n, dist, pan); the sounds are already loaded and PlaySound already handles the types.
+				// UPDATE: B1-4 / G1-4 are now played when an item is dropped on Tom / the shopkeeper (OnGame item-drop switch), and E62 on
+				// entering wrhus_1 (InitDataResponseHandler). E54-61 and E63-67 have no caller in the v8.00 exe (it only loads up to E62).
+				for (i = 1; i <= 67; i++)
 				{	wsprintf(G_cTxt, "sounds\\E%d.wav", i);
 					m_pESound[i] = new class CSoundBuffer(m_DSound.m_lpDS, m_DSound.m_DSCaps, G_cTxt);
+			}
+				for (i = 2; i <= 4; i++)
+				{	wsprintf(G_cTxt, "sounds\\D%d.wav", i);
+					m_pDSound[i] = new class CSoundBuffer(m_DSound.m_lpDS, m_DSound.m_DSCaps, G_cTxt);
+				}
+				for (i = 1; i <= 4; i++)
+				{	wsprintf(G_cTxt, "sounds\\B%d.wav", i);
+					m_pBSound[i] = new class CSoundBuffer(m_DSound.m_lpDS, m_DSound.m_DSCaps, G_cTxt);
+					wsprintf(G_cTxt, "sounds\\G%d.wav", i);
+					m_pGSound[i] = new class CSoundBuffer(m_DSound.m_lpDS, m_DSound.m_DSCaps, G_cTxt);
 			}	}
 			ChangeGameMode(GAMEMODE_ONMAINMENU);
 		}
@@ -4164,6 +4256,7 @@ void CGame::bItemDrop_ExternalScreen(char cItemID, short msX, short msY)
 
 				case 15: // ShopKeeper-W
 		  		case 24: // Tom
+					PlaySound((sType == 15) ? 'G' : 'B', 1 + (rand() % 4), 0, 0); // v8.00: G1-4 shopkeeper, B1-4 Tom
 					EnableDialogBox(20, 2, cItemID, sType);
 					m_stDialogBoxInfo[20].sV3 = 1;
 					m_stDialogBoxInfo[20].sV4 = m_wCommObjectID; 
@@ -13205,7 +13298,7 @@ void CGame::LogResponseHandler(char * Data)
 		cp++;
 		IsAccountValid = (int)*cp;
 		cp++;
-		//blank
+		m_bBanned = (*cp != 0); // the byte the original left blank
 		cp++;
 		wp = (WORD *)cp;
 		m_iAccntMonth = *wp;
@@ -13309,6 +13402,8 @@ void CGame::LogResponseHandler(char * Data)
 		ip = (int *)cp;
 		m_iTimeLeftSecIP = *ip;
 		cp += 4;
+		ZeroMemory(m_cBanReason, sizeof(m_cBanReason));
+		if (m_bBanned) strncpy(m_cBanReason, cp, 100); // the server ends the text with a 0
 		ChangeGameMode(GAMEMODE_ONSELECTCHARACTER);
 		ClearContents_OnSelectCharacter();
 
@@ -13344,6 +13439,7 @@ void CGame::LogResponseHandler(char * Data)
 		break;
 
 	case LOGRESMSGTYPE_ACCOUNTLOCKED:
+		m_iLockMinutes = *(WORD *)(Data + INDEX2_MSGTYPE + 2);
 		ChangeGameMode(GAMEMODE_ONLOGRESMSG);
 		ZeroMemory(m_cMsg, sizeof(m_cMsg));
 		strcpy(m_cMsg, "7K");
@@ -13569,6 +13665,7 @@ void CGame::LogResponseHandler(char * Data)
 		case 5: strcpy(m_cMsg, "3G"); break;
 		case 6: strcpy(m_cMsg, "3Z"); break;
 		case 7: strcpy(m_cMsg, "3J"); break;
+		case 8: strcpy(m_cMsg, "3L"); break; // banned account
 		}
 		break;
 
@@ -16469,6 +16566,7 @@ void CGame::EnableDialogBox(int iBoxID, int cType, int sV1, int sV2, char * pStr
 			m_stDialogBoxInfo[21].sView = 0;
 			m_stDialogBoxInfo[21].sV1 = _iLoadTextDlgContents2(sV1+20);
 			m_stDialogBoxInfo[21].sV2 = sV1+20;
+			PlayNpcDialogVoice(sV1+20);
 		}
 		break;
 
@@ -16797,6 +16895,10 @@ void CGame::DisableDialogBox(int iBoxID)
  int i;
 
 	switch (iBoxID) {
+	case 13:
+		PlayVoice("sounds\\npc\\cityhall_close.mp3");
+		break;
+
 	case 4:
 		m_bIsItemDisabled[m_stDialogBoxInfo[4].sView] = FALSE;
 		break;
@@ -17945,6 +18047,8 @@ void CGame::SetCameraShakingEffect(short sDist, int iMul)
 {
  int iDegree;
 
+	if (!m_bAllowCameraShake) return;
+
 	iDegree = 5 - sDist;
 	if (iDegree <= 0) iDegree = 0;
 	iDegree *= 2;
@@ -18000,6 +18104,282 @@ void CGame::DrawTopMsg()
 	if ( G_dwGlobalTime > (m_iTopMsgLastSec*CLOCKS_PER_SEC+m_dwTopMsgTime) ) {
 		ZeroMemory(m_cTopMsg, sizeof(m_cTopMsg));
 	}
+}
+
+// v8.00 "Warning! Low Health": blinking text under the top bar while HP is below a quarter of the maximum
+BOOL CGame::bIsLowHealth()
+{
+	if (!m_bLowHealthWarn || m_iHP <= 0) return FALSE;
+	uint32 iMaxHP = m_stat[STAT_VIT]*3 + m_iLevel*2 + m_stat[STAT_STR]/2; // same formula as the gauge panel
+	return (iMaxHP != 0 && (uint32)m_iHP * 4 < iMaxHP);
+}
+
+void CGame::DrawLowHealthWarning()
+{
+	if (!bIsLowHealth()) return;
+	if (((G_dwGlobalTime / 400) % 2) == 0) PutAlignedString(0, 639, 40, "Warning! Low Health", 255, 60, 60);
+}
+
+// v8.00: the screen edge glows red, pulsing in step with the text (translucent 50 % / 25 %)
+void CGame::DrawLowHealthVignette()
+{
+	if (m_pLowHealthSpr == NULL || !bIsLowHealth()) return;
+	if (((G_dwGlobalTime / 400) % 2) == 0) m_pLowHealthSpr->PutTransSprite50(0, 0, 0, m_dwCurTime);
+	else m_pLowHealthSpr->PutTransSprite25(0, 0, 0, m_dwCurTime);
+}
+
+// v8.00 "Ground Items": the name of the top item lying on each visible tile. The client only knows the sprite, so the
+// names come from the server on request (MSGID_REQUEST_GROUNDITEMNAMES, answered by hg items.rs) and are cached by tile.
+void CGame::SendGroundItemNamesRequest(int iCount, short * psXY)
+{
+ char cMsg[128];
+	if (m_pGSock == NULL || iCount <= 0 || iCount > 24) return;
+	ZeroMemory(cMsg, sizeof(cMsg));
+	*(DWORD *)(cMsg + INDEX4_MSGID) = MSGID_REQUEST_GROUNDITEMNAMES;
+	*(WORD *)(cMsg + INDEX2_MSGTYPE) = 0;
+	cMsg[6] = (char)iCount;
+	memcpy(cMsg + 7, psXY, iCount * 4);
+	m_pGSock->iSendMsg(cMsg, 7 + iCount * 4, (char)(rand() % 255 + 1));
+}
+
+void CGame::GroundItemNamesHandler(char * Data)
+{
+ char * cp, cName[21], cStr1[64], cStr2[128], cStr3[128];
+ int iCount;
+	cp = (char *)(Data + INDEX2_MSGTYPE + 2);
+	iCount = (unsigned char)*cp;
+	cp++;
+	if (iCount > 24) iCount = 24;
+	for (int i = 0; i < iCount; i++)
+	{
+		short sX = *(short *)cp; cp += 2;
+		short sY = *(short *)cp; cp += 2;
+		ZeroMemory(cName, sizeof(cName));
+		memcpy(cName, cp, 20); cp += 20;
+		DWORD dwAttribute = *(DWORD *)cp; cp += 4;
+		DWORD dwCount = *(DWORD *)cp; cp += 4;
+		std::map<DWORD, GroundName>::iterator it = m_mapGroundNames.find(((DWORD)(WORD)sX << 16) | (WORD)sY);
+		if (it == m_mapGroundNames.end()) continue;
+		it->second.bAnswered = TRUE;
+		ZeroMemory(it->second.cName, sizeof(it->second.cName));
+		if (cName[0] == 0) continue; // nothing lies there any more
+		ZeroMemory(cStr1, sizeof(cStr1)); ZeroMemory(cStr2, sizeof(cStr2)); ZeroMemory(cStr3, sizeof(cStr3));
+		GetItemName(cName, dwAttribute, cStr1, cStr2, cStr3);
+		if (dwCount > 1) wsprintf(it->second.cName, "%.30s (%d)", cStr1, (int)dwCount);
+		else wsprintf(it->second.cName, "%.40s", cStr1);
+	}
+}
+
+void CGame::DrawGroundItemNames(short sPivotX, short sPivotY, short sDivX, short sDivY, short sModX, short sModY)
+{
+ int ix, iy, indexX, indexY, dX, dY, iAsk = 0;
+ short sAsk[48];
+ DWORD dwTime = m_dwCurTime;
+	if (m_iGroundNamesMap != m_cMapIndex)
+	{	m_mapGroundNames.clear();
+		m_iGroundNamesMap = m_cMapIndex;
+	}
+	// same walk over the tiles as DrawObjects
+	indexY = sDivY + sPivotY - 7;
+	for (iy = -sModY-224; iy <= VIEWY+352; iy += 32)
+	{	indexX = sDivX + sPivotX - 4;
+		for (ix = -sModX-128; ix <= SCREENX+128; ix += 32)
+		{
+			if ((ix >= -32) && (ix <= SCREENX) && (iy >= -16) && (iy <= VIEWY) &&
+				(indexX >= m_pMapData->m_sPivotX) && (indexX <= m_pMapData->m_sPivotX + MapDataSIZEX) &&
+				(indexY >= m_pMapData->m_sPivotY) && (indexY <= m_pMapData->m_sPivotY + MapDataSIZEY))
+			{
+				dX = indexX - m_pMapData->m_sPivotX;
+				dY = indexY - m_pMapData->m_sPivotY;
+				short sSprite = m_pMapData->m_Data[dX][dY].m_sItemSprite;
+				if (sSprite != 0)
+				{
+					short sFrame = m_pMapData->m_Data[dX][dY].m_sItemSpriteFrame;
+					char cColor = m_pMapData->m_Data[dX][dY].m_cItemColor;
+					DWORD dwKey = ((DWORD)(WORD)indexX << 16) | (WORD)indexY;
+					std::map<DWORD, GroundName>::iterator it = m_mapGroundNames.find(dwKey);
+					BOOL bAsk = FALSE;
+					if (it == m_mapGroundNames.end())
+					{	GroundName gn;
+						ZeroMemory(&gn, sizeof(gn));
+						it = m_mapGroundNames.insert(std::make_pair(dwKey, gn)).first;
+						bAsk = TRUE;
+					}
+					else if (it->second.sSprite != sSprite || it->second.sFrame != sFrame || it->second.cColor != cColor) bAsk = TRUE; // another item now
+					else if (!it->second.bAnswered && (dwTime - it->second.dwAsked) > 3000) bAsk = TRUE; // the answer got lost
+					if (bAsk && iAsk < 24)
+					{	it->second.sSprite = sSprite; it->second.sFrame = sFrame; it->second.cColor = cColor;
+						it->second.bAnswered = FALSE; it->second.dwAsked = dwTime;
+						ZeroMemory(it->second.cName, sizeof(it->second.cName));
+						sAsk[iAsk*2] = (short)indexX; sAsk[iAsk*2 + 1] = (short)indexY; iAsk++;
+					}
+					else if (it->second.bAnswered && it->second.cName[0] != 0)
+						PutAlignedString(ix + 16 - 80, ix + 16 + 80, iy - 8, it->second.cName, 255, 255, 190);
+				}
+			}
+			indexX++;
+		}
+		indexY++;
+	}
+	if (iAsk > 0 && (dwTime - m_dwGroundNamesReq) >= 300)
+	{	SendGroundItemNamesRequest(iAsk, sAsk);
+		m_dwGroundNamesReq = dwTime;
+	}
+	else if (iAsk > 0) // too soon: forget that we asked, the next frame asks again
+		for (int i = 0; i < iAsk; i++) m_mapGroundNames.erase(((DWORD)(WORD)sAsk[i*2] << 16) | (WORD)sAsk[i*2 + 1]);
+}
+
+// v8.00 NPC voices (mp3 in SOUNDS/npc): one at a time, a new one cuts the previous.
+void CGame::PlayVoice(const char * pFile)
+{
+ int iVol;
+	if (m_bSoundFlag == FALSE || m_bSoundStat == FALSE) return;
+	if (m_pVoice != NULL)
+	{	m_pVoice->bStop();
+		delete m_pVoice;
+		m_pVoice = NULL;
+	}
+	iVol = (m_cSoundVolume - 100)*20;
+	if (iVol > 0) iVol = 0;
+	if (iVol < -10000) iVol = -10000;
+	m_pVoice = new class CSoundBuffer(m_DSound.m_lpDS, m_DSound.m_DSCaps, (char *)pFile, TRUE);
+	m_pVoice->Play(FALSE, 0, iVol);
+}
+
+// The NPC talk dialog shows CONTENTS/contents<iText>.txt; v8.00 speaks the ones listed here (SOUNDS/npc/<iText>.mp3, transcribed with
+// Whisper: 121 quest unfinished, 124 quest board empty, 134 quest done, 156 wizard (magic), 218 a woman who falls for the player (the Princess?), 224 Aresden recruiter).
+void CGame::PlayNpcDialogVoice(int iText)
+{
+ static const int iVoices[] = {121, 124, 134, 156, 218, 224};
+ char cFile[64];
+	for (int i = 0; i < (int)(sizeof(iVoices) / sizeof(iVoices[0])); i++)
+	if (iVoices[i] == iText)
+	{	wsprintf(cFile, "sounds\\npc\\%d.mp3", iText);
+		PlayVoice(cFile);
+		return;
+	}
+}
+
+// v8.00 event badges in the top left corner of the world view: one per running event, left to right; the cursor over one shows
+// its name and the time left to its right.
+void CGame::DrawEventIcons(short msX, short msY)
+{
+ static const char * cName[2] = { "Double EXP Event", "Double EK Event" };
+ int iSlot = 0, iRunning = 0;
+ DWORD dwNow = timeGetTime();
+	if (m_pEventSpr == NULL) return;
+	for (int e = 0; e < 2; e++)
+		if (m_dwEventEnd[e] != 0 && (int)(m_dwEventEnd[e] - dwNow) > 0) iRunning++;
+	int iTextX = 4 + iRunning * 29 + 6; // the description starts after the last badge, so it never hides under another one
+	for (int e = 0; e < 2; e++)
+	{
+		if (m_dwEventEnd[e] == 0) continue;
+		int iLeft = (int)(m_dwEventEnd[e] - dwNow);
+		if (iLeft <= 0) { m_dwEventEnd[e] = 0; continue; } // over (the server also says so)
+		int iX = 4 + iSlot * 29, iY = 4;
+		m_pEventSpr->PutSpriteFast(iX, iY, e, m_dwCurTime);
+		if ((msX >= iX) && (msX < iX + 27) && (msY >= iY) && (msY < iY + 29))
+		{
+			char cTxt[48];
+			int iSec = (iLeft + 999) / 1000;
+			PutString2(iTextX, iY + 2, (char *)cName[e], 255, 255, 255);
+			wsprintf(cTxt, "Time Left: %d:%02d:%02d", iSec / 3600, (iSec / 60) % 60, iSec % 60);
+			PutString2(iTextX, iY + 16, cTxt, 220, 220, 160);
+		}
+		iSlot++;
+	}
+}
+
+// v8.00 item descriptions: CONTENTS/ItemDesc.txt (name <TAB> flags <TAB> text, flags E = "(Event Only)", M = "(Item Mall)"), loaded the
+// first time an item tooltip is drawn; the text goes under the item's own lines, wrapped, in green, the tags after it.
+void CGame::DrawItemDescription(int iX, int iY, CItem * pItem)
+{
+ char cName[24];
+ char * pItemName = pItem->m_cName;
+	if (!m_bItemDescLoaded)
+	{	m_bItemDescLoaded = true;
+		FILE * pFile = fopen("contents\\ItemDesc.txt", "rt");
+		if (pFile != NULL)
+		{	char cLine[400];
+			while (fgets(cLine, sizeof(cLine), pFile) != NULL)
+			{	if (cLine[0] == ';' || cLine[0] == '\n' || cLine[0] == '\r') continue;
+				char * pTab = strchr(cLine, '\t');
+				if (pTab == NULL) continue;
+				*pTab = 0;
+				int n = (int)strlen(pTab + 1);
+				while (n > 0 && (pTab[n] == '\n' || pTab[n] == '\r')) pTab[n--] = 0;
+				m_mapItemDesc[cLine] = pTab + 1;
+			}
+			fclose(pFile);
+		}
+	}
+	ZeroMemory(cName, sizeof(cName));
+	memcpy(cName, pItemName, 20);
+	// v8.00: every worn-type item takes a dye (server item_use.rs), so the tooltip says it
+	switch (pItem->m_cEquipPos)
+	{	case EQUIPPOS_HEAD: case EQUIPPOS_BODY: case EQUIPPOS_ARMS: case EQUIPPOS_PANTS: case EQUIPPOS_BOOTS:
+		case EQUIPPOS_LHAND: case EQUIPPOS_RHAND: case EQUIPPOS_TWOHAND: case EQUIPPOS_BACK:
+			PutString(iX, iY, "This item can be dyed.", RGB(170, 220, 170), FALSE, 1);
+			iY += 15;
+	}
+	std::map<std::string, std::string>::iterator it = m_mapItemDesc.find(cName);
+	if (it == m_mapItemDesc.end()) return;
+	const char * pTab = strchr(it->second.c_str(), '\t');
+	if (pTab == NULL) return;
+	std::string flags = it->second.substr(0, pTab - it->second.c_str());
+	std::string text = pTab + 1;
+	while (!text.empty())
+	{	size_t cut = text.size();
+		if (cut > 38) { cut = text.rfind(' ', 38); if (cut == std::string::npos) cut = 38; }
+		PutString(iX, iY, (char *)text.substr(0, cut).c_str(), RGB(170, 220, 170), FALSE, 1);
+		iY += 15;
+		text = (cut < text.size()) ? text.substr(cut + 1) : std::string();
+	}
+	if (flags.find('E') != std::string::npos) { PutString(iX, iY, "(Event Only)", RGB(255, 200, 80), FALSE, 1); iY += 15; }
+	if (flags.find('M') != std::string::npos) { PutString(iX, iY, "(Item Mall)", RGB(255, 200, 80), FALSE, 1); iY += 15; }
+}
+
+// v8.00 typing bubble: "I am typing a chat line" goes to the server (MSGID_REQUEST_TYPING), which tells the players around
+// (MSGID_EVENT_TYPING); each client shows a bubble with 0..3 dots over the head for 7 s, refreshed while the typist keeps typing.
+void CGame::SendTypingState(int iState)
+{
+ char cMsg[16];
+	if (m_pGSock == NULL) return;
+	ZeroMemory(cMsg, sizeof(cMsg));
+	*(DWORD *)(cMsg + INDEX4_MSGID) = MSGID_REQUEST_TYPING;
+	*(WORD *)(cMsg + INDEX2_MSGTYPE) = 0;
+	cMsg[6] = (char)iState;
+	m_pGSock->iSendMsg(cMsg, 7, (char)(rand() % 255 + 1));
+}
+
+// the three toggles live with the character on the server (MSGID_REQUEST_CLIENTFLAGS, answered on entering by NOTIFY_CLIENTFLAGS)
+void CGame::SendClientFlags()
+{
+ char cMsg[16];
+	if (m_pGSock == NULL) return;
+	ZeroMemory(cMsg, sizeof(cMsg));
+	*(DWORD *)(cMsg + INDEX4_MSGID) = MSGID_REQUEST_CLIENTFLAGS;
+	*(WORD *)(cMsg + INDEX2_MSGTYPE) = 0;
+	cMsg[6] = (char)((m_bShowTyping ? 1 : 0) | (m_bLowHealthWarn ? 2 : 0) | (m_bShowGroundNames ? 4 : 0));
+	m_pGSock->iSendMsg(cMsg, 7, (char)(rand() % 255 + 1));
+}
+
+void CGame::TypingEventHandler(char * Data)
+{
+ char cName[12];
+	ZeroMemory(cName, sizeof(cName));
+	memcpy(cName, Data + 6, 10);
+	if (Data[16] != 0) m_mapTyping[cName] = timeGetTime() + 7000;
+	else m_mapTyping.erase(cName);
+}
+
+void CGame::DrawTypingBubble(int iX, int iY, char * pName)
+{
+	if (m_pTypingSpr == NULL || m_mapTyping.empty()) return;
+	std::map<std::string, DWORD>::iterator it = m_mapTyping.find(pName);
+	if (it == m_mapTyping.end()) return;
+	if ((int)(it->second - timeGetTime()) <= 0) { m_mapTyping.erase(it); return; }
+	m_pTypingSpr->PutSpriteFast(iX - 19, iY - 66, (int)((G_dwGlobalTime / 300) % 4), m_dwCurTime);
 }
 
 void CGame::DrawAstoriaStats()
@@ -19805,6 +20185,7 @@ void CGame::DlgBoxClick_CityhallMenu(short msX, short msY)
 		{	
 			if (m_side != NEUTRAL) return;
 			m_stDialogBoxInfo[13].cMode = 1; // citizenship rq
+			PlayVoice("sounds\\npc\\citizenship.mp3");
 			PlaySound('E', 14, 5);
 		}
 		if ((msX > sX + 35) && (msX < sX + 220) && (msY > sY + 95) && (msY < sY + 120))
@@ -20037,6 +20418,7 @@ void CGame::CivilRightAdmissionHandler(char *Data)
 
 	case 1:
 		m_stDialogBoxInfo[13].cMode = 3;
+		PlayVoice("sounds\\npc\\citizenship_acquired.mp3");
 		cp = (char *)(Data + INDEX2_MSGTYPE + 2);
 		ZeroMemory(m_cLocation, sizeof(m_cLocation));
 		memcpy(m_cLocation, cp, 10);
@@ -20236,6 +20618,21 @@ void CGame::PlaySound(char cType, int iNum, int iDist, long lPan)
 		case 'E':
 			if (m_pESound[iNum] == NULL) return;
 			m_pESound[iNum]->Play(FALSE, lPan, iVol);
+			break;
+
+		case 'D':
+			if (m_pDSound[iNum] == NULL) return;
+			m_pDSound[iNum]->Play(FALSE, lPan, iVol);
+			break;
+
+		case 'B':
+			if (m_pBSound[iNum] == NULL) return;
+			m_pBSound[iNum]->Play(FALSE, lPan, iVol);
+			break;
+
+		case 'G':
+			if (m_pGSound[iNum] == NULL) return;
+			m_pGSound[iNum]->Play(FALSE, lPan, iVol);
 			break;
 		}
 	}
@@ -25061,7 +25458,9 @@ void CGame::UpdateScreen_OnSelectCharacter(short sX, short sY, short msX, short 
  DWORD dwTime = timeGetTime();
 	sY = 10;
 	m_DDraw.ClearBackB4();
-	DrawNewDialogBox(SPRID_INTERFACE_ND_SELECTCHAR, 0, 0, 0);
+	// the background is an opaque full screen whose colour key (its pixel 0,0 = brown 77,62,51) also occurs in the rune texture:
+	// keyed, those ~1000 pixels became holes (black dots, mostly inside the portrait ovals and on the left edge)
+	DrawNewDialogBox(SPRID_INTERFACE_ND_SELECTCHAR, 0, 0, 0, TRUE);
 	DrawNewDialogBox(SPRID_INTERFACE_ND_BUTTON, 0, 0, 50);
 
 	iTemp1 = 0;
@@ -25173,12 +25572,24 @@ void CGame::UpdateScreen_OnSelectCharacter(short sX, short sY, short msX, short 
 	int iTempMon, iTempDay, iTempHour, iTempMin ;
 	iTempMon = iTempDay = iTempHour =iTempMin = 0;
 
-	if (IsAccountValid) {	 
-		 wsprintf(G_cTxt, UPDATE_SCREEN_ON_SELECT_CHARACTER37);
-	} else {	
-		strcpy(G_cTxt, UPDATE_SCREEN_ON_SELECT_CHARACTER39);
+	if (m_bBanned)
+	{	// "Account banned" and the reason from the login (BanReason), over two lines
+		char cLine[64];
+		int iCut = (int)strlen(m_cBanReason);
+		if (iCut > 46) { iCut = 46; while (iCut > 20 && m_cBanReason[iCut] != ' ') iCut--; }
+		PutAlignedString(98, 357, 394, "Your account is banned.", 255, 70, 70);
+		ZeroMemory(cLine, sizeof(cLine));
+		memcpy(cLine, m_cBanReason, iCut);
+		PutAlignedString(98, 357, 409, cLine, 255, 70, 70);
+		if ((int)strlen(m_cBanReason) > iCut) PutAlignedString(98, 357, 424, m_cBanReason + iCut + 1, 255, 70, 70);
+	}else
+	{	if (IsAccountValid) {	 
+			 wsprintf(G_cTxt, UPDATE_SCREEN_ON_SELECT_CHARACTER37);
+		} else {	
+			strcpy(G_cTxt, UPDATE_SCREEN_ON_SELECT_CHARACTER39);
+		}
+		PutAlignedString(98, 357, 410, G_cTxt);
 	}
-	PutAlignedString(98, 357, 410, G_cTxt);
 
 	//PutAlignedString(135, 315, 456, UPDATE_SCREEN_ON_SELECT_CHARACTER36);//"Test Server"
 
@@ -25434,6 +25845,22 @@ void CGame::NotifyMsgHandler(char * Data)
 	
 	case NOTIFY_LOTERY_LOST:		// reversed by Snoopy: 0x0BEE:	
 		AddEventList( MSG_NOTIFY_LOTERY_LOST, 10 );//"You draw a blank. Please try again next time.."
+		break;
+
+	case NOTIFY_CLIENTFLAGS:
+		{	DWORD dwFlags = *(DWORD *)(Data + INDEX2_MSGTYPE + 2);
+			m_bShowTyping = (dwFlags & 1) != 0;
+			m_bLowHealthWarn = (dwFlags & 2) != 0;
+			m_bShowGroundNames = (dwFlags & 4) != 0;
+		}
+		break;
+
+	case NOTIFY_SERVEREVENTS:
+		{	DWORD * pdw = (DWORD *)(Data + INDEX2_MSGTYPE + 2);
+			DWORD dwNow = timeGetTime();
+			for (int e = 0; e < 2; e++)
+				m_dwEventEnd[e] = (pdw[e] != 0) ? (dwNow + pdw[e] * 1000) : 0;
+		}
 		break;
 
 	case NOTIFY_TELEPORT_REJECTED:
@@ -27476,6 +27903,18 @@ void CGame::UpdateScreen_OnLogResMsg()
 		PutAlignedString(198, 453, 210,  "Please ! Try Other World Server");
 		break;
 
+	case 'K': // v8.00: account locked by too many wrong passwords
+		PutString_SprFont(172 + 68, 165, "Account is locked", 7,0,0);
+		PutAlignedString(198, 453, 195,  "Too many wrong passwords.");
+		wsprintf(G_cTxt, "Check back in %d minutes!", (int)m_iLockMinutes);
+		PutAlignedString(198, 453, 210,  G_cTxt);
+		break;
+
+	case 'L': // v8.00: banned account
+		PutString_SprFont(172 + 68, 165, "Your account is banned", 7,0,0);
+		PutAlignedString(198, 453, 210,  m_cBanReason);
+		break;
+
 	case 'M': 	
 		PutString_SprFont(172 + 68, 165, "Your password expired", 7,0,0);
 		PutAlignedString(198, 453, 210,  "Please! Change password");
@@ -29138,6 +29577,32 @@ BOOL CGame::bCheckLocalChatCommand(char * pMsg)
 	{	
 		m_showGrid = !m_showGrid;
 		return TRUE;
+	}else if (memcmp(cBuff, "/camerashake", 12)==0)
+	{
+		m_bAllowCameraShake = !m_bAllowCameraShake;
+		if (!m_bAllowCameraShake) m_iCameraShakingDegree = 0;
+		AddEventList((char *)(m_bAllowCameraShake ? "Camera shake is now turned on." : "Camera shake is now turned off."), 10);
+		return TRUE;
+	}else if (memcmp(cBuff, "/itemnames", 10)==0)
+	{
+		m_bShowGroundNames = !m_bShowGroundNames;
+		SendClientFlags();
+		m_mapGroundNames.clear();
+		AddEventList((char *)(m_bShowGroundNames ? "Enabled display of ground item names." : "Disabled display of ground item names."), 10);
+		return TRUE;
+	}else if (memcmp(cBuff, "/typing", 7)==0)
+	{
+		m_bShowTyping = !m_bShowTyping;
+		SendClientFlags();
+		m_mapTyping.clear();
+		AddEventList((char *)(m_bShowTyping ? "You will see when someone is typing a text." : "You wont see when someone is typing a text anymore."), 10);
+		return TRUE;
+	}else if (memcmp(cBuff, "/lowhealth", 10)==0)
+	{
+		m_bLowHealthWarn = !m_bLowHealthWarn;
+		SendClientFlags();
+		AddEventList((char *)(m_bLowHealthWarn ? "Low health warning is now turned on." : "Low health warning is now turned off."), 10);
+		return TRUE;
 	}else if (memcmp(cBuff, "/showalldmg", 11)==0)
 	{
 		if(!m_showAllDmg)
@@ -30047,6 +30512,7 @@ void CGame::UpdateScreen_OnGame()
 		m_iFrameCount = 0;
 		if( m_bMusicStat ) StartBGM();
 		//if(m_iLevel < 40) AddEventList(UPDATE_SCREEN_ONGAME12, 10);
+		if (m_iLevel < 2 && strcmp(m_cCurLocation, "default") == 0) PlayVoice("sounds\\npc\\intro.mp3"); // welcome voice: a level 1 character entering the first map (default)
 	}
 
 	m_cGameModeCount++;
@@ -30300,6 +30766,20 @@ void CGame::UpdateScreen_OnGame()
 		DrawEffectLights();
 	if (iUpdateRet != 0)
 		DrawObjects(sPivotX, sPivotY, sDivX, sDivY, sModX, sModY, msWX, msY);
+	if (iUpdateRet != 0 && m_bShowGroundNames)
+		DrawGroundItemNames(sPivotX, sPivotY, sDivX, sDivY, sModX, sModY);
+	{	BOOL bTyping = (m_bInputStatus && m_pInputBuffer == m_cChatMsg) ? TRUE : FALSE;
+		DWORD dwTypeNow = timeGetTime();
+		if (bTyping != m_bTypingSent || (bTyping && (dwTypeNow - m_dwTypingSentTime) > 4000))
+		{	SendTypingState(bTyping);
+			m_bTypingSent = bTyping;
+			m_dwTypingSentTime = dwTypeNow;
+		}
+	}
+	if (iUpdateRet != 0)
+		DrawLowHealthVignette();
+	if (iUpdateRet != 0)
+		DrawEventIcons(msWX, msY);
 
 	if (iUpdateRet != 0)
 	{	DrawEffects();
@@ -30411,6 +30891,7 @@ void CGame::UpdateScreen_OnGame()
 			PutString(msWX, msY +25 +iLoc, G_cTxt, RGB(150,150,150), FALSE, 1);
 			iLoc += 15;
 		}
+		DrawItemDescription(msWX, msY + 25 + iLoc + ((iLoc == 15) ? 15 : 0), m_pItemList[m_stMCursor.sSelectedObjectID]);
 		if ( iLoc == 15 )
 		{	iLoc = 0;
 			for ( int iTmp = 0 ; iTmp < MAXITEMS ; iTmp++ )
@@ -30433,6 +30914,7 @@ void CGame::UpdateScreen_OnGame()
 	if(iUpdateRet)
 	{
 		DrawTopMsg();
+		DrawLowHealthWarning();
 		if (m_bIsHeldenianMode && m_bIsHeldenianMap) 
 			DrawHeldenianStats();
 
@@ -30700,9 +31182,10 @@ void CGame::StartBGM()
 		}
 		return;
 	}
-	char cWavFileName[32];
+	char cWavFileName[64];
 	ZeroMemory( cWavFileName, sizeof(cWavFileName) );
-	if ((m_bIsXmas == TRUE) && (m_cWhetherEffectType >= 4)) strcpy( cWavFileName, "music\\Carol.wav" );
+	if (m_cGameMode == GAMEMODE_ONMAINMENU) strcpy( cWavFileName, "music\\theeldergates.mp3" ); // v8.00 menu theme
+	else if ((m_bIsXmas == TRUE) && (m_cWhetherEffectType >= 4)) strcpy( cWavFileName, "music\\Carol.wav" );
 	else
 	{	if (memcmp(m_cCurLocation, "aresden", 7) == 0) strcpy( cWavFileName, "music\\aresden.wav" );
 		else if (memcmp(m_cCurLocation, "elvine", 6) == 0) strcpy( cWavFileName, "music\\elvine.wav" );
@@ -39042,6 +39525,7 @@ void CGame::NotifyMsg_MagicEffectOn(char * Data)
 	case MAGICTYPE_POISON:
 		AddEventList(NOTIFYMSG_MAGICEFFECT_ON10, 10);
 		m_bIsPoisoned = TRUE;
+		PlaySound('D', 4, 0, 0);
 		break;
 
 	case MAGICTYPE_BERSERK:
@@ -40050,6 +40534,7 @@ void CGame::InitDataResponseHandler(char * Data)
 	strcpy( cPreCurLocation, m_cCurLocation );
 	ZeroMemory(m_cCurLocation, sizeof(m_cCurLocation));
 	memcpy(m_cCurLocation, cp, 10);
+	if (memcmp(m_cCurLocation, "wrhus_1", 7) == 0) PlaySound('E', 62, 0, 0); // v8.00: entering the Aresden warehouse
 	cp += 10;
 
 	G_cSpriteAlphaDegree = *cp;

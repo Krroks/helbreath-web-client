@@ -14,6 +14,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
+#include <map>
+#include <string>
 #include <time.h>
 #include <mmsystem.h> 
 #include <winbase.h>
@@ -226,6 +228,18 @@ public:
 	void CrusadeContributionResult(int iWarContribution);
 	void CannotConstruct(int iCode);
 	void DrawTopMsg();
+	void DrawLowHealthWarning();
+	void SendTypingState(int iState);
+	void SendClientFlags();
+	void TypingEventHandler(char * Data);
+	void DrawTypingBubble(int iX, int iY, char * pName);
+	void DrawItemDescription(int iX, int iY, CItem * pItem);
+	void DrawLowHealthVignette();
+	BOOL bIsLowHealth();
+	void DrawEventIcons(short msX, short msY);
+	void DrawGroundItemNames(short sPivotX, short sPivotY, short sDivX, short sDivY, short sModX, short sModY);
+	void GroundItemNamesHandler(char * Data);
+	void SendGroundItemNamesRequest(int iCount, short * psXY);
 	void SetTopMsg(const char * pString, unsigned char iLastSec);
 	void DrawAstoriaStats();
 	void DrawObjectFOE(int ix, int iy, int iFrame);
@@ -602,6 +616,8 @@ public:
 	LONG GetRegKey(HKEY key, LPCTSTR subkey, LPTSTR retdata);
 	void GoHomepage();
 	void StartBGM();
+	void PlayVoice(const char * pFile);
+	void PlayNpcDialogVoice(int iText);
 
 	//Snoopy: added function:
 	void DebugLog(char * cStr);
@@ -728,7 +744,11 @@ public:
 	class CSoundBuffer *	m_pCSound[MAXSOUNDEFFECTS];
 	class CSoundBuffer *	m_pMSound[MAXSOUNDEFFECTS];
 	class CSoundBuffer *	m_pESound[MAXSOUNDEFFECTS];
+	class CSoundBuffer *	m_pDSound[MAXSOUNDEFFECTS];	// v8.00 D*.wav (D4 = poisoned)
+	class CSoundBuffer *	m_pBSound[MAXSOUNDEFFECTS];	// v8.00 B*.wav (loaded, no trigger yet: see the TODO in OnLoading)
+	class CSoundBuffer *	m_pGSound[MAXSOUNDEFFECTS];	// v8.00 G*.wav (same)
 	class CSoundBuffer *    m_pBGM;
+	class CSoundBuffer *    m_pVoice;	// v8.00 NPC voice (mp3), one at a time
 	class DXC_ddraw  m_DDraw;
 	class DXC_dinput m_DInput;
 	class CMisc      m_Misc;
@@ -836,6 +856,23 @@ public:
 	BOOL  m_bShowFPS;
 	bool  m_showGrid;
 	bool  m_showAllDmg;
+	bool  m_bLowHealthWarn;
+	bool  m_bShowTyping;		// v8.00: show the bubble over players that are typing (/typing)
+	BOOL  m_bTypingSent;		// what we last told the server about our own typing
+	DWORD m_dwTypingSentTime;
+	std::map<std::string, DWORD> m_mapTyping;	// name -> timeGetTime() until which the bubble shows
+	class CSprite * m_pTypingSpr;	// Typing.pak: 4 frames of a speech bubble with 0..3 dots
+	std::map<std::string, std::string> m_mapItemDesc;	// CONTENTS/ItemDesc.txt: item name -> "<flags>\t<text>"
+	bool  m_bItemDescLoaded;
+	class CSprite * m_pEventSpr;	// v8.00 event badges (EventIcons.pak): frame 0 = EXP, 1 = EK
+	class CSprite * m_pLowHealthSpr;	// v8.00 red screen edge of the low-health warning (LowHealth.pak)
+	DWORD m_dwEventEnd[2];		// timeGetTime() at which the Double EXP / Double EK events end, 0 = not running
+	bool  m_bShowGroundNames;	// v8.00 "Ground Items" option, /itemnames
+	struct GroundName { short sSprite, sFrame; char cColor; char cName[48]; DWORD dwAsked; BOOL bAnswered; };
+	std::map<DWORD, GroundName> m_mapGroundNames;	// (x << 16 | y) -> name of the top item, asked from the server
+	int   m_iGroundNamesMap;
+	DWORD m_dwGroundNamesReq;
+	bool  m_bAllowCameraShake;	// v8.00 "/camerashake" option
 	bool  m_bigItems;
 	bool  m_showTimeStamp;
 
@@ -871,6 +908,9 @@ public:
 	int m_iIpYear, m_iIpMonth, m_iIpDay;
 	int m_iDownSkillIndex;
 	bool IsAccountValid;
+	int  m_iLockMinutes;		// minutes left of the account lock (too many wrong passwords), from the login
+	bool m_bBanned;			// the login says the account is banned: m_cBanReason is "until <date>: <reason>"
+	char m_cBanReason[104];
 
 	int m_iIlusionOwnerH;
 	int m_iApprColor_IE;

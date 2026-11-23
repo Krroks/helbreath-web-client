@@ -31,7 +31,7 @@ public:
 	LPDIRECTSOUND	m_lpDS;
 	DSCAPS			m_DSCaps;
 
-	char				m_cWavFileName[32];
+	char				m_cWavFileName[64];
 	LPDIRECTSOUNDBUFFER m_lpDSB[MAXSOUNDBUFFERS];
 	char				m_cCurrentBufferIndex;
 

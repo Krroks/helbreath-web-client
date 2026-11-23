@@ -51,6 +51,7 @@ struct IDirectSoundBuffer {
     ~IDirectSoundBuffer();
     HRESULT Lock(DWORD, DWORD, LPVOID *p1, LPDWORD n1, LPVOID *p2, LPDWORD n2, DWORD);
     HRESULT Unlock(LPVOID, DWORD, LPVOID, DWORD);
+    HRESULT LoadEncoded(const BYTE *bytes, DWORD n); // mp3 etc.: decoded by the browser, plays when ready
     HRESULT Play(DWORD, DWORD, DWORD flags);
     HRESULT Stop();
     HRESULT SetCurrentPosition(DWORD) { return DS_OK; } // Play always starts at 0

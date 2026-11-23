@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bots</title>
+<style>
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --ink: #1c2330; --muted: #5d6879; --line: #d9dde4;
+  --accent: #2f6fdb; --ares: #d64545; --elv: #2f6fdb; --neu: #7b8494; --on: #1f9d55; --off: #98a1b0;
+  --map-walk: #e9ecf1; --map-wall: #b9c0cc; --tp: #e0a800;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161d; --panel: #1a2029; --ink: #e6e9ef; --muted: #98a1b0; --line: #2b3340;
+    --accent: #6ea0ff; --ares: #ff6b6b; --elv: #6ea0ff; --neu: #9aa3b2; --on: #43c37a; --off: #667085;
+    --map-walk: #232a35; --map-wall: #10141a; --tp: #f2c14b;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161d; --panel: #1a2029; --ink: #e6e9ef; --muted: #98a1b0; --line: #2b3340;
+  --accent: #6ea0ff; --ares: #ff6b6b; --elv: #6ea0ff; --neu: #9aa3b2; --on: #43c37a; --off: #667085;
+  --map-walk: #232a35; --map-wall: #10141a; --tp: #f2c14b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, "Segoe UI", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: baseline; padding: 14px 16px 6px; }
+h1 { font-size: 20px; margin: 0; }
+.stats { display: flex; flex-wrap: wrap; gap: 4px 18px; color: var(--muted); }
+.stats b { color: var(--ink); font-weight: 600; }
+.badge { padding: 1px 8px; border-radius: 10px; background: var(--line); color: var(--muted); font-size: 12px; }
+.badge.warn { background: #e0a80033; color: var(--tp); }
+main { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 12px; padding: 8px 16px 20px; }
+@media (max-width: 980px) { main { grid-template-columns: minmax(0, 1fr); } }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; min-width: 0; }
+section h2 { font-size: 14px; margin: 0 0 8px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.tools { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+input[type=search] { min-width: 280px; }
+input[type=search], select { background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+label { color: var(--muted); display: inline-flex; gap: 4px; align-items: center; }
+.tablewrap { overflow: auto; max-height: 520px; border: 1px solid var(--line); border-radius: 6px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 4px 8px; text-align: left; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th { position: sticky; top: 0; background: var(--panel); cursor: pointer; color: var(--muted); font-weight: 600; user-select: none; }
+th.sorted::after { content: " \25BE"; }
+th.sorted.asc::after { content: " \25B4"; }
+tr.sel td { background: color-mix(in srgb, var(--accent) 18%, transparent); }
+tbody tr { cursor: pointer; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; background: var(--off); }
+.dot.on { background: var(--on); }
+.n-aresden { color: var(--ares); } .n-elvine { color: var(--elv); } .n-neutral { color: var(--neu); }
+.hp { display: inline-block; width: 54px; height: 6px; background: var(--line); border-radius: 3px; vertical-align: middle; overflow: hidden; }
+.hp i { display: block; height: 100%; background: var(--on); }
+.canvaswrap { position: relative; }
+canvas { width: 100%; height: auto; display: block; border: 1px solid var(--line); border-radius: 6px; background: var(--map-wall); image-rendering: pixelated; }
+#tip { position: absolute; pointer-events: none; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 2px 8px; font-size: 12px; display: none; white-space: nowrap; }
+.legend { color: var(--muted); font-size: 12px; margin-top: 6px; display: flex; gap: 12px; flex-wrap: wrap; }
+.legend span::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; background: currentColor; }
+#chat { max-height: 340px; overflow: auto; border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+.line { padding: 2px 0; border-bottom: 1px dashed var(--line); word-break: break-word; }
+.line time { color: var(--muted); font-variant-numeric: tabular-nums; margin-right: 6px; }
+.line .map { color: var(--muted); font-size: 12px; margin-right: 6px; }
+.line .who { font-weight: 600; }
+.line.player .who { color: var(--tp); }
+.line .to { color: var(--muted); }
+.empty { color: var(--muted); padding: 8px; }
+.full { grid-column: 1 / -1; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Bots</h1>
+  <div class="stats" id="stats"></div>
+  <span class="badge" id="status">conectando…</span>
+</header>
+<main>
+  <section class="full">
+    <h2>Bots</h2>
+    <div class="tools">
+      <input type="search" id="q" placeholder="Buscar por nombre, hermandad o mapa">
+      <label><input type="checkbox" id="onlyOn"> solo conectados</label>
+      <select id="fNation"><option value="">todas las naciones</option><option>aresden</option><option>elvine</option><option>neutral</option></select>
+    </div>
+    <div class="tablewrap"><table id="tbl"><thead><tr id="head"></tr></thead><tbody id="rows"></tbody></table></div>
+  </section>
+  <section>
+    <h2>Mapa <select id="mapSel"></select> <span class="badge" id="mapInfo"></span></h2>
+    <div class="canvaswrap"><canvas id="map" width="400" height="400"></canvas><div id="tip"></div></div>
+    <div class="legend"><span style="color:var(--ares)">Aresden</span><span style="color:var(--elv)">Elvine</span><span style="color:var(--neu)">Neutral</span><span style="color:var(--tp)">teletransporte</span></div>
+  </section>
+  <section>
+    <h2>Chats <label><input type="checkbox" id="chatSel"> solo el bot seleccionado</label> <label><input type="checkbox" id="chatMap"> solo este mapa</label></h2>
+    <div id="chat"></div>
+  </section>
+</main>
+<script>
+"use strict";
+const COLS = [
+  ["n", "Nombre"], ["online", "Estado"], ["level", "Nivel"], ["nation", "Nación"], ["guild", "Hermandad"], ["class", "Clase"],
+  ["pace", "Ritmo"], ["mode", "Haciendo"], ["map", "Mapa"], ["pos", "Posición"], ["hp", "Vida"], ["gold", "Oro"], ["kills", "Bajas"],
+];
+const $ = (id) => document.getElementById(id);
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+let data = { bots: [], maps: [], chat: [], t: 0 };
+let sort = { key: "level", asc: false };
+let selBot = "";
+const mapCache = new Map(); // name -> { w, h, tpls, img (offscreen canvas) } | "loading"
+let hits = []; // dots on the canvas: [x, y, bot] in canvas pixels
+
+const key = (b, k) => {
+  if (k === "pos") return b.x * 10000 + b.y;
+  if (k === "hp") return b.online ? b.hp / Math.max(1, b.maxhp) : -1;
+  if (k === "guild") return b.guild || "";
+  return b[k] ?? 0;
+};
+function head() {
+  const tr = $("head");
+  tr.textContent = "";
+  for (const [k, label] of COLS) {
+    const th = document.createElement("th");
+    th.textContent = label;
+    if (sort.key === k) th.className = "sorted" + (sort.asc ? " asc" : "");
+    th.onclick = () => { sort = { key: k, asc: sort.key === k ? !sort.asc : k === "n" }; head(); renderTable(); };
+    tr.append(th);
+  }
+}
+function cell(tr, text, cls) {
+  const td = document.createElement("td");
+  td.textContent = text;
+  if (cls) td.className = cls;
+  tr.append(td);
+  return td;
+}
+function renderTable() {
+  const q = $("q").value.trim().toLowerCase(), on = $("onlyOn").checked, nat = $("fNation").value;
+  let list = data.bots.filter((b) => (!on || b.online) && (!nat || b.nation === nat) && (!q || `${b.n} ${b.guild} ${b.map} ${b.class}`.toLowerCase().includes(q)));
+  list.sort((a, b) => {
+    const x = key(a, sort.key), y = key(b, sort.key);
+    const c = typeof x === "string" ? x.localeCompare(y) : x - y;
+    return (sort.asc ? c : -c) || a.n.localeCompare(b.n);
+  });
+  const body = $("rows");
+  body.textContent = "";
+  for (const b of list) {
+    const tr = document.createElement("tr");
+    if (b.n === selBot) tr.className = "sel";
+    tr.onclick = () => { selBot = b.n === selBot ? "" : b.n; if (b.online) $("mapSel").value = b.map; renderAll(); };
+    cell(tr, b.n);
+    const st = cell(tr, "");
+    st.innerHTML = '<span class="dot' + (b.online ? " on" : "") + '"></span>';
+    st.append(b.online ? "conectado" : "desconectado");
+    cell(tr, b.level, "num");
+    cell(tr, b.nation, "n-" + b.nation);
+    cell(tr, b.guild ? b.guild + (b.rank === 0 ? " (maestro)" : "") : "—");
+    cell(tr, b.class);
+    cell(tr, b.pace);
+    cell(tr, b.online ? b.mode : "—");
+    cell(tr, b.map || "—");
+    cell(tr, b.map ? `${b.x}, ${b.y}` : "—", "num");
+    const hp = cell(tr, "", "");
+    if (b.online) {
+      hp.innerHTML = '<span class="hp"><i style="width:' + Math.round((100 * b.hp) / Math.max(1, b.maxhp)) + '%"></i></span> ';
+      hp.append(`${b.hp}/${b.maxhp}`);
+    } else hp.textContent = "—";
+    cell(tr, b.online ? b.gold : "—", "num");
+    cell(tr, b.kills, "num");
+    body.append(tr);
+  }
+  if (!list.length) { const tr = document.createElement("tr"); const td = cell(tr, "Ningún bot con ese filtro", "empty"); td.colSpan = COLS.length; body.append(tr); }
+}
+function renderStats() {
+  const on = data.bots.filter((b) => b.online);
+  const lv = on.map((b) => b.level);
+  const n = (f) => on.filter(f).length;
+  const guilds = new Set(data.bots.filter((b) => b.guild).map((b) => b.guild));
+  $("stats").innerHTML = `<span><b>${on.length}</b> / ${data.bots.length} conectados</span>` +
+    `<span>nivel <b>${lv.length ? Math.min(...lv) : 0}–${lv.length ? Math.max(...lv) : 0}</b> (media <b>${lv.length ? Math.round(lv.reduce((a, c) => a + c, 0) / lv.length) : 0}</b>)</span>` +
+    `<span>Aresden <b>${n((b) => b.nation === "aresden")}</b> · Elvine <b>${n((b) => b.nation === "elvine")}</b> · neutrales <b>${n((b) => b.nation === "neutral")}</b></span>` +
+    `<span>hermandades <b>${guilds.size}</b></span>`;
+  const st = $("status");
+  st.textContent = data.paused ? "en pausa" : "al día · " + new Date(data.t).toLocaleTimeString();
+  st.className = "badge" + (data.paused ? " warn" : "");
+}
+// ---- maps
+async function loadMap(name) {
+  if (mapCache.has(name)) return;
+  mapCache.set(name, "loading");
+  try {
+    const m = await (await fetch("/bots/api/map/" + encodeURIComponent(name))).json();
+    const bin = atob(m.bits);
+    const off = document.createElement("canvas");
+    off.width = m.w; off.height = m.h;
+    const ctx = off.getContext("2d");
+    const img = ctx.createImageData(m.w, m.h);
+    const walk = css("--map-walk"), wall = css("--map-wall");
+    const rgb = (c) => { const d = document.createElement("canvas").getContext("2d"); d.fillStyle = c; d.fillRect(0, 0, 1, 1); return d.getImageData(0, 0, 1, 1).data; };
+    const [w, k] = [rgb(walk), rgb(wall)];
+    for (let i = 0; i < m.w * m.h; i++) {
+      const bit = (bin.charCodeAt(i >> 3) >> (i & 7)) & 1;
+      const c = bit ? w : k;
+      img.data.set([c[0], c[1], c[2], 255], i * 4);
+    }
+    ctx.putImageData(img, 0, 0);
+    mapCache.set(name, { w: m.w, h: m.h, tpls: m.teleports, img: off });
+  } catch { mapCache.delete(name); }
+  drawMap();
+}
+function renderMapSel() {
+  const sel = $("mapSel"), cur = sel.value;
+  const names = data.maps.map((m) => m.name);
+  const label = (m) => `${m.name} (${m.count})`;
+  if (JSON.stringify([...sel.options].map((o) => o.textContent)) !== JSON.stringify(data.maps.map(label))) {
+    sel.textContent = "";
+    for (const m of data.maps) sel.append(Object.assign(document.createElement("option"), { value: m.name, textContent: label(m) }));
+    // the map it was on, else the one with most bots
+    sel.value = names.includes(cur) ? cur : ([...data.maps].sort((a, b) => b.count - a.count)[0]?.name || "");
+  }
+}
+function drawMap() {
+  const cv = $("map"), name = $("mapSel").value, m = mapCache.get(name);
+  const here = data.bots.filter((b) => b.online && b.map === name);
+  $("mapInfo").textContent = name ? `bots aquí: ${here.length}` : "";
+  hits = [];
+  const ctx = cv.getContext("2d");
+  if (!name) { ctx.clearRect(0, 0, cv.width, cv.height); return; }
+  if (!m || m === "loading") { loadMap(name); return; }
+  const S = 720; // canvas pixels per side: the map is scaled to fit
+  const sc = S / Math.max(m.w, m.h);
+  cv.width = Math.round(m.w * sc); cv.height = Math.round(m.h * sc);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(m.img, 0, 0, cv.width, cv.height);
+  ctx.fillStyle = css("--tp");
+  for (const [x, y] of m.tpls) ctx.fillRect(x * sc - 2, y * sc - 2, 5, 5);
+  for (const b of here) {
+    const px = (b.x + 0.5) * sc, py = (b.y + 0.5) * sc;
+    ctx.beginPath(); ctx.arc(px, py, b.n === selBot ? 8 : 5, 0, 7);
+    ctx.fillStyle = css("--" + (b.nation === "aresden" ? "ares" : b.nation === "elvine" ? "elv" : "neu"));
+    ctx.fill();
+    ctx.lineWidth = b.n === selBot ? 3 : 1.5; ctx.strokeStyle = b.n === selBot ? css("--ink") : css("--panel"); ctx.stroke();
+    hits.push([px, py, b]);
+  }
+}
+$("map").addEventListener("mousemove", (e) => {
+  const cv = $("map"), r = cv.getBoundingClientRect(), k = cv.width / r.width;
+  const x = (e.clientX - r.left) * k, y = (e.clientY - r.top) * k;
+  const h = hits.filter(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < 100).sort((a, b) => (a[0] - x) ** 2 + (a[1] - y) ** 2 - ((b[0] - x) ** 2 + (b[1] - y) ** 2))[0];
+  const tip = $("tip");
+  if (!h) { tip.style.display = "none"; return; }
+  const b = h[2];
+  tip.textContent = `${b.n} · nv ${b.level} · ${b.guild || "sin hermandad"} · ${b.x}, ${b.y}`;
+  tip.style.display = "block";
+  tip.style.left = Math.min(e.clientX - r.left + 12, r.width - 200) + "px";
+  tip.style.top = e.clientY - r.top + 12 + "px";
+});
+$("map").addEventListener("mouseleave", () => ($("tip").style.display = "none"));
+$("map").addEventListener("click", (e) => {
+  const cv = $("map"), r = cv.getBoundingClientRect(), k = cv.width / r.width;
+  const x = (e.clientX - r.left) * k, y = (e.clientY - r.top) * k;
+  const h = hits.find(([px, py]) => (px - x) ** 2 + (py - y) ** 2 < 100);
+  if (h) { selBot = h[2].n === selBot ? "" : h[2].n; renderAll(); }
+});
+// ---- chat
+function renderChat() {
+  const box = $("chat"), atEnd = box.scrollTop + box.clientHeight >= box.scrollHeight - 30;
+  const onlySel = $("chatSel").checked && selBot, onlyMap = $("chatMap").checked, map = $("mapSel").value;
+  const lines = data.chat.filter((l) => (!onlySel || l.from === selBot || l.to === selBot) && (!onlyMap || l.map === map));
+  box.textContent = "";
+  for (const l of lines) {
+    const d = document.createElement("div");
+    d.className = "line" + (l.bot ? "" : " player");
+    const t = document.createElement("time"); t.textContent = new Date(l.t).toLocaleTimeString();
+    const mp = document.createElement("span"); mp.className = "map"; mp.textContent = l.map;
+    const who = document.createElement("span"); who.className = "who"; who.textContent = l.from;
+    d.append(t, mp, who);
+    if (l.to) { const to = document.createElement("span"); to.className = "to"; to.textContent = " → " + l.to + " (susurro)"; d.append(to); }
+    d.append(": " + l.text);
+    box.append(d);
+  }
+  if (!lines.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Aún no hay conversaciones."; box.append(e); }
+  if (atEnd) box.scrollTop = box.scrollHeight;
+}
+function renderAll() { renderStats(); renderTable(); renderMapSel(); drawMap(); renderChat(); }
+async function tick() {
+  try {
+    const r = await fetch("/bots/api/bots", { cache: "no-store" });
+    if (!r.ok) throw new Error(r.status);
+    data = await r.json();
+    renderAll();
+  } catch {
+    const st = $("status"); st.textContent = "sin conexión con el servidor"; st.className = "badge warn";
+  }
+}
+for (const id of ["q", "onlyOn", "fNation"]) $(id).addEventListener("input", renderTable);
+for (const id of ["chatSel", "chatMap"]) $(id).addEventListener("input", renderChat);
+$("mapSel").addEventListener("change", () => { drawMap(); renderChat(); });
+head();
+tick();
+setInterval(tick, 2000);
+</script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 // Dev server for the browser client: / -> Web/out, /data/ -> the game folder (with HTTP Range, the client reads
 // .pak files in pieces). Local only.
-// usage: node serve.mjs [port=8080] [gameDir=G:/DEV/hb/run/client] [bridgePort=8000]
+// usage: node serve.mjs [port=8080] [gameDir=G:/DEV/hb/run/client] [bridgePort=8000] [botsPort=8097]
+// /bots is the page of the server's bots (bots.html), /bots/api/* is proxied to hg on botsPort.
 import http from "node:http";
 import net from "node:net";
 import fs from "node:fs";
@@ -10,7 +11,9 @@ import { fileURLToPath } from "node:url";
 const port = Number(process.argv[2] || 8080);
 const gameDir = path.resolve(process.argv[3] || "G:/DEV/hb/run/client");
 const bridgePort = Number(process.argv[4] || 8000);
-const outDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../out");
+const botsPort = Number(process.argv[5] || 8097); // hg's bots JSON (web-port in Bots.cfg)
+const toolsDir = path.dirname(fileURLToPath(import.meta.url));
+const outDir = path.resolve(toolsDir, "../out");
 const types = { ".html": "text/html; charset=utf-8", ".js": "text/javascript", ".wasm": "application/wasm" };
 
 // Resolves a URL path inside root; null if it would escape it.
@@ -40,6 +43,20 @@ const server = http.createServer((req, res) => {
     res.write(": hot reload\n\n");
     listeners.add(res);
     req.on("close", () => listeners.delete(res));
+    return;
+  }
+  // the bots page, and the JSON of the game server (hg, web-port in Bots.cfg) behind /bots/api/
+  if (url.pathname === "/bots" || url.pathname === "/bots/") {
+    res.writeHead(200, { "Content-Type": types[".html"], "Cache-Control": "no-cache" });
+    return fs.createReadStream(path.join(toolsDir, "bots.html")).pipe(res);
+  }
+  if (url.pathname.startsWith("/bots/api/")) {
+    const up = http.get({ host: "127.0.0.1", port: botsPort, path: url.pathname.slice(5) + url.search, timeout: 3000 }, (r) => {
+      res.writeHead(r.statusCode || 502, { "Content-Type": r.headers["content-type"] || "application/json", "Cache-Control": "no-cache" });
+      r.pipe(res);
+    });
+    up.on("error", () => { res.writeHead(502, { "Content-Type": "application/json" }).end('{"error":"hg is not serving the bots (web-port)"}'); });
+    up.on("timeout", () => up.destroy());
     return;
   }
   const file = url.pathname.startsWith("/data/")

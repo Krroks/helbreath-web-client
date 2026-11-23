@@ -394,7 +394,7 @@
 #define	NOTIFY_MSG_HANDLER61	"He is not your guild member."
 #define	NOTIFY_MSG_HANDLER62	"Time has run out, you are forced to recall"
 #define	NOTIFY_MSG_HANDLER63	"You cannot deposit items any more."
-#define	NOTIFY_MSG_HANDLER64	"Travelers cannot level up to 51. Become a citizen."
+#define	NOTIFY_MSG_HANDLER64	"Travelers cannot level up to 21. Become a citizen of Aresden or Elvine."
 #define	NOTIFY_MSG_HANDLER65	"You can't carry anymore items."
 #define	NOTIFY_MSG_HANDLER66	" Your bag is full."
 #define	NOTIFY_MSG_HANDLER67	"Not enough Gold."
@@ -404,7 +404,7 @@
 #define	NOTIFY_MSG_HANDLER71	" Your reservation has been canceled because of time out."
 #define	NOTIFY_MSG_HANDLER72	" You took the whole admission ticket."
 #define	NOTIFY_MSG_HANDLER73	" Your reservation of the arena %d succeeded."
-#define	NOTIFY_MSG_HANDLER74	"You can't recall within 10 seconds of taking damage."
+#define	NOTIFY_MSG_HANDLER74	"You can't recall within 20 seconds of taking damage."
 
 
 #define	RESERVE_FIGHTZONE_RESPONSE_HANDLER1	"You were successful on booking arena!"
