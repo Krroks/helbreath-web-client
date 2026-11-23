@@ -98,7 +98,7 @@ canvas { width: 100%; height: auto; display: block; border: 1px solid var(--line
 "use strict";
 const COLS = [
   ["n", "Nombre"], ["online", "Estado"], ["level", "Nivel"], ["nation", "Nación"], ["guild", "Hermandad"], ["class", "Clase"],
-  ["pace", "Ritmo"], ["temper", "Carácter"], ["hobby", "Afición"], ["mode", "Haciendo"], ["map", "Mapa"], ["pos", "Posición"], ["hp", "Vida"], ["gold", "Oro"], ["exph", "Exp/h"], ["kph", "Bajas/h"], ["kills", "Bajas"], ["deaths", "Muertes"], ["friends", "Amigos"],
+  ["pace", "Ritmo"], ["temper", "Carácter"], ["hobby", "Afición"], ["mode", "Haciendo"], ["map", "Mapa"], ["pos", "Posición"], ["hp", "Vida"], ["gold", "Oro"], ["exph", "Exp/h"], ["kph", "Mobs/h"], ["kills", "Mobs"], ["pkills", "Bajas"], ["deaths", "Muertes"], ["friends", "Amigos"],
 ];
 const $ = (id) => document.getElementById(id);
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -170,6 +170,7 @@ function renderTable() {
     cell(tr, b.online ? b.exph : "—", "num");
     cell(tr, b.online ? b.kph : "—", "num");
     cell(tr, b.kills, "num");
+    cell(tr, b.pkills, "num");
     cell(tr, b.deaths, "num");
     cell(tr, b.friends, "num");
     body.append(tr);
@@ -186,6 +187,7 @@ function renderStats() {
     `<span>Aresden <b>${n((b) => b.nation === "aresden")}</b> · Elvine <b>${n((b) => b.nation === "elvine")}</b> · neutrales <b>${n((b) => b.nation === "neutral")}</b></span>` +
     `<span>hermandades <b>${guilds.size}</b></span>` +
     `<span>exp/h media <b>${on.length ? Math.round(on.reduce((a, c) => a + c.exph, 0) / on.length) : 0}</b></span>` +
+    `<span>bajas <b>${data.bots.reduce((a, c) => a + c.pkills, 0)}</b></span>` +
     `<span>muertes <b>${data.bots.reduce((a, c) => a + c.deaths, 0)}</b></span>`;
   const st = $("status");
   st.textContent = data.paused ? "en pausa" : "al día · " + new Date(data.t).toLocaleTimeString();

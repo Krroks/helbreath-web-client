@@ -40590,7 +40590,7 @@ void CGame::InitDataResponseHandler(char * Data)
 	m_pMapData->m_sPivotX = sX;
 	m_pMapData->m_sPivotY = sY;
 
-	m_sPlayerX   = sX + 14 + 5;
+	m_sPlayerX   = sX + 17 + 5; // data window starts at column 9: the player is VIEW_LEFT columns in
 	m_sPlayerY   = sY + 12 + 5;
 
 	m_cPlayerDir = 5;
