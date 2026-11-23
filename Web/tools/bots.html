@@ -98,7 +98,7 @@ canvas { width: 100%; height: auto; display: block; border: 1px solid var(--line
 "use strict";
 const COLS = [
   ["n", "Nombre"], ["online", "Estado"], ["level", "Nivel"], ["nation", "Nación"], ["guild", "Hermandad"], ["class", "Clase"],
-  ["pace", "Ritmo"], ["mode", "Haciendo"], ["map", "Mapa"], ["pos", "Posición"], ["hp", "Vida"], ["gold", "Oro"], ["kills", "Bajas"],
+  ["pace", "Ritmo"], ["temper", "Carácter"], ["hobby", "Afición"], ["mode", "Haciendo"], ["map", "Mapa"], ["pos", "Posición"], ["hp", "Vida"], ["gold", "Oro"], ["exph", "Exp/h"], ["kph", "Bajas/h"], ["kills", "Bajas"], ["deaths", "Muertes"], ["friends", "Amigos"],
 ];
 const $ = (id) => document.getElementById(id);
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
@@ -111,6 +111,7 @@ let hits = []; // dots on the canvas: [x, y, bot] in canvas pixels
 const key = (b, k) => {
   if (k === "pos") return b.x * 10000 + b.y;
   if (k === "hp") return b.online ? b.hp / Math.max(1, b.maxhp) : -1;
+  if (k === "exph" || k === "kph" || k === "gold") return b.online ? b[k] : -1;
   if (k === "guild") return b.guild || "";
   return b[k] ?? 0;
 };
@@ -155,6 +156,8 @@ function renderTable() {
     cell(tr, b.guild ? b.guild + (b.rank === 0 ? " (maestro)" : "") : "—");
     cell(tr, b.class);
     cell(tr, b.pace);
+    cell(tr, b.temper);
+    cell(tr, b.hobby || "—");
     cell(tr, b.online ? b.mode : "—");
     cell(tr, b.map || "—");
     cell(tr, b.map ? `${b.x}, ${b.y}` : "—", "num");
@@ -164,7 +167,11 @@ function renderTable() {
       hp.append(`${b.hp}/${b.maxhp}`);
     } else hp.textContent = "—";
     cell(tr, b.online ? b.gold : "—", "num");
+    cell(tr, b.online ? b.exph : "—", "num");
+    cell(tr, b.online ? b.kph : "—", "num");
     cell(tr, b.kills, "num");
+    cell(tr, b.deaths, "num");
+    cell(tr, b.friends, "num");
     body.append(tr);
   }
   if (!list.length) { const tr = document.createElement("tr"); const td = cell(tr, "Ningún bot con ese filtro", "empty"); td.colSpan = COLS.length; body.append(tr); }
@@ -177,7 +184,9 @@ function renderStats() {
   $("stats").innerHTML = `<span><b>${on.length}</b> / ${data.bots.length} conectados</span>` +
     `<span>nivel <b>${lv.length ? Math.min(...lv) : 0}–${lv.length ? Math.max(...lv) : 0}</b> (media <b>${lv.length ? Math.round(lv.reduce((a, c) => a + c, 0) / lv.length) : 0}</b>)</span>` +
     `<span>Aresden <b>${n((b) => b.nation === "aresden")}</b> · Elvine <b>${n((b) => b.nation === "elvine")}</b> · neutrales <b>${n((b) => b.nation === "neutral")}</b></span>` +
-    `<span>hermandades <b>${guilds.size}</b></span>`;
+    `<span>hermandades <b>${guilds.size}</b></span>` +
+    `<span>exp/h media <b>${on.length ? Math.round(on.reduce((a, c) => a + c.exph, 0) / on.length) : 0}</b></span>` +
+    `<span>muertes <b>${data.bots.reduce((a, c) => a + c.deaths, 0)}</b></span>`;
   const st = $("status");
   st.textContent = data.paused ? "en pausa" : "al día · " + new Date(data.t).toLocaleTimeString();
   st.className = "badge" + (data.paused ? " warn" : "");
