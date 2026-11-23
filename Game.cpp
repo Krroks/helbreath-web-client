@@ -18375,10 +18375,14 @@ void CGame::TypingEventHandler(char * Data)
 
 void CGame::DrawTypingBubble(int iX, int iY, char * pName)
 {
-	if (m_pTypingSpr == NULL || m_mapTyping.empty()) return;
-	std::map<std::string, DWORD>::iterator it = m_mapTyping.find(pName);
-	if (it == m_mapTyping.end()) return;
-	if ((int)(it->second - timeGetTime()) <= 0) { m_mapTyping.erase(it); return; }
+	if (m_pTypingSpr == NULL) return;
+	// your own bubble shows while you type (the server never echoes it back), so a lone client can see it works
+	if (!(m_bTypingSent && strcmp(pName, m_cPlayerName) == 0))
+	{	if (m_mapTyping.empty()) return;
+		std::map<std::string, DWORD>::iterator it = m_mapTyping.find(pName);
+		if (it == m_mapTyping.end()) return;
+		if ((int)(it->second - timeGetTime()) <= 0) { m_mapTyping.erase(it); return; }
+	}
 	m_pTypingSpr->PutSpriteFast(iX - 19, iY - 66, (int)((G_dwGlobalTime / 300) % 4), m_dwCurTime);
 }
 
