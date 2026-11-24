@@ -65,6 +65,13 @@ canvas { width: 100%; height: auto; display: block; border: 1px solid var(--line
 .line.player .who { color: var(--tp); }
 .line .to { color: var(--muted); }
 .empty { color: var(--muted); padding: 8px; }
+.maxrow { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.maxrow input[type=range] { flex: 1 1 260px; accent-color: var(--accent); }
+.maxrow input[type=number] { width: 5.5em; background: var(--bg); color: var(--ink); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; font: inherit; }
+button { background: var(--accent); color: var(--bg); border: 0; border-radius: 6px; padding: 6px 14px; font: inherit; font-weight: 600; cursor: pointer; }
+button:disabled { opacity: .5; cursor: default; }
+.hint { color: var(--muted); font-size: 12px; margin: 6px 0 0; }
+.maxrow .hint { margin: 0; }
 .full { grid-column: 1 / -1; }
 </style>
 </head>
@@ -75,6 +82,16 @@ canvas { width: 100%; height: auto; display: block; border: 1px solid var(--line
   <span class="badge" id="status">conectando…</span>
 </header>
 <main>
+  <section class="full" id="ctl">
+    <h2>Máximo de bots conectados <span class="badge" id="maxInfo"></span></h2>
+    <div class="maxrow">
+      <input type="range" id="maxR" min="0" max="200" value="0" aria-label="Máximo de bots conectados">
+      <input type="number" id="maxN" min="0" max="200" value="0" aria-label="Número máximo">
+      <button id="maxGo" type="button">Aplicar</button>
+      <span id="maxMsg" class="hint"></span>
+    </div>
+    <p class="hint">Al soltar el control (o con Aplicar) el servidor guarda el número en Bots.cfg y los bots de más se desconectan o se conectan los que faltan, en segundos. Con las sesiones activas conectados puede ser menos que el máximo.</p>
+  </section>
   <section class="full">
     <h2>Bots</h2>
     <div class="tools">
@@ -291,7 +308,39 @@ function renderChat() {
   if (!lines.length) { const e = document.createElement("div"); e.className = "empty"; e.textContent = "Aún no hay conversaciones."; box.append(e); }
   if (atEnd) box.scrollTop = box.scrollHeight;
 }
-function renderAll() { renderStats(); renderTable(); renderMapSel(); drawMap(); renderChat(); }
+// ---- the maximum of connected bots: the server writes it to Bots.cfg and applies it at once
+let maxDirty = false;
+function renderMax() {
+  const on = data.bots.filter((b) => b.online).length;
+  if (data.cap) { $("maxR").max = data.cap; $("maxN").max = data.cap; }
+  if (!maxDirty && data.max !== undefined) { $("maxR").value = data.max; $("maxN").value = data.max; }
+  $("maxInfo").textContent = `conectados ${on} · máximo ${data.max ?? "?"}`;
+}
+async function applyMax() {
+  const n = Math.max(0, Math.min(Number($("maxN").max) || 200, Math.round(Number($("maxN").value))));
+  if (!Number.isFinite(n)) return;
+  $("maxGo").disabled = true;
+  try {
+    const r = await fetch("/bots/api/max", { method: "POST", headers: { "X-Bots": "1", "Content-Type": "application/json" }, body: JSON.stringify({ max: n }) });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || r.status);
+    maxDirty = false;
+    $("maxR").value = $("maxN").value = j.max;
+    $("maxMsg").textContent = `máximo ${j.max}: aplicando…`;
+    for (const ms of [800, 2500, 5000]) setTimeout(tick, ms);
+    setTimeout(() => ($("maxMsg").textContent = ""), 6000);
+  } catch (e) {
+    $("maxMsg").textContent = "no se pudo: " + e.message;
+  } finally {
+    $("maxGo").disabled = false;
+  }
+}
+$("maxR").addEventListener("input", () => { maxDirty = true; $("maxN").value = $("maxR").value; });
+$("maxR").addEventListener("change", applyMax);
+$("maxN").addEventListener("input", () => { maxDirty = true; $("maxR").value = $("maxN").value; });
+$("maxN").addEventListener("keydown", (e) => { if (e.key === "Enter") applyMax(); });
+$("maxGo").addEventListener("click", applyMax);
+function renderAll() { renderStats(); renderMax(); renderTable(); renderMapSel(); drawMap(); renderChat(); }
 async function tick() {
   try {
     const r = await fetch("/bots/api/bots", { cache: "no-store" });

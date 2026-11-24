@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Estado del servidor</title>
+<style>
+:root {
+  --bg: #f4f5f7; --panel: #ffffff; --ink: #1c2330; --muted: #5d6879; --line: #d9dde4;
+  --ok: #1f9d55; --warn: #b7791f; --bad: #d64545; --accent: #2f6fdb; --spark: #2f6fdb;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #12161d; --panel: #1a2029; --ink: #e6e9ef; --muted: #98a1b0; --line: #2b3340;
+    --ok: #43c37a; --warn: #f2c14b; --bad: #ff6b6b; --accent: #6ea0ff; --spark: #6ea0ff;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #12161d; --panel: #1a2029; --ink: #e6e9ef; --muted: #98a1b0; --line: #2b3340;
+  --ok: #43c37a; --warn: #f2c14b; --bad: #ff6b6b; --accent: #6ea0ff; --spark: #6ea0ff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, "Segoe UI", sans-serif; }
+header { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: center; padding: 14px 16px 8px; }
+h1 { font-size: 20px; margin: 0; }
+.verdict { display: inline-flex; gap: 8px; align-items: center; padding: 3px 12px; border-radius: 14px; font-weight: 600; border: 2px solid var(--line); }
+.verdict.ok { border-color: var(--ok); color: var(--ok); }
+.verdict.warn { border-color: var(--warn); color: var(--warn); }
+.verdict.bad, .verdict.down { border-color: var(--bad); color: var(--bad); }
+.meta { color: var(--muted); display: flex; gap: 4px 16px; flex-wrap: wrap; }
+.meta b { color: var(--ink); font-weight: 600; }
+#banner { display: none; margin: 4px 16px; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--bad); color: var(--bad); font-weight: 600; }
+#reasons { margin: 0 16px; padding: 0; list-style: none; display: flex; flex-wrap: wrap; gap: 4px 16px; color: var(--muted); }
+#reasons li::before { content: "\26A0\FE0E  "; }
+main { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; padding: 10px 16px 6px; }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; }
+.card h2 { font-size: 12px; font-weight: 600; margin: 0 0 4px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.big { font-size: 26px; font-weight: 650; line-height: 1.1; }
+.sub { color: var(--muted); font-size: 12px; margin-top: 2px; }
+.card.warn .big { color: var(--warn); }
+.card.bad .big { color: var(--bad); }
+svg.spark { width: 100%; height: 34px; display: block; margin-top: 6px; }
+svg.spark polyline { fill: none; stroke: var(--spark); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.wide { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; padding: 6px 16px 24px; }
+section { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; min-width: 0; overflow-x: auto; }
+section h2 { font-size: 14px; margin: 0 0 6px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 3px 10px 3px 0; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; }
+.empty { color: var(--muted); }
+pre { margin: 0; white-space: pre-wrap; font: 12px/1.5 ui-monospace, Consolas, monospace; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Estado del servidor</h1>
+  <span id="verdict" class="verdict down">sin datos</span>
+  <span class="meta">
+    <span>activo <b id="uptime">-</b></span>
+    <span>dato de hace <b id="age">-</b></span>
+    <span>versi&oacute;n <b id="version">-</b></span>
+    <span>puente <b id="bridge">-</b></span>
+  </span>
+</header>
+<div id="banner" role="alert"></div>
+<ul id="reasons"></ul>
+
+<main>
+  <div class="card" id="c-players"><h2>Jugadores</h2><div class="big" id="players">-</div><div class="sub" id="players-sub"></div><svg class="spark" id="sp-players" viewBox="0 0 100 30" preserveAspectRatio="none"></svg></div>
+  <div class="card" id="c-tick"><h2>Tick del juego</h2><div class="big" id="tick">-</div><div class="sub" id="tick-sub"></div><svg class="spark" id="sp-tick" viewBox="0 0 100 30" preserveAspectRatio="none"></svg></div>
+  <div class="card" id="c-gap"><h2>Pausa del bucle</h2><div class="big" id="gap">-</div><div class="sub" id="gap-sub"></div></div>
+  <div class="card" id="c-queue"><h2>Colas</h2><div class="big" id="queue">-</div><div class="sub" id="queue-sub"></div></div>
+  <div class="card" id="c-login"><h2>Login</h2><div class="big" id="login">-</div><div class="sub" id="login-sub"></div></div>
+  <div class="card" id="c-net"><h2>Red</h2><div class="big" id="net">-</div><div class="sub" id="net-sub"></div><svg class="spark" id="sp-net" viewBox="0 0 100 30" preserveAspectRatio="none"></svg></div>
+  <div class="card" id="c-world"><h2>Mundo</h2><div class="big" id="world">-</div><div class="sub" id="world-sub"></div></div>
+  <div class="card" id="c-events"><h2>Eventos</h2><div class="big" id="events">-</div><div class="sub" id="events-sub"></div></div>
+</main>
+
+<div class="wide">
+  <section><h2>Mapas con actividad</h2><div id="maps"></div></section>
+  <section><h2>Jugadores conectados</h2><div id="people"></div></section>
+  <section><h2>Problemas recientes</h2><pre id="problems" class="empty">ninguno</pre></section>
+</div>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const POLL_MS = 2000, KEEP = 150; // 5 minutes of history
+const hist = { players: [], tick: [], net: [] };
+let lastGood = 0;
+
+function fmtDur(s) {
+  s = Math.max(0, Math.floor(s));
+  const d = Math.floor(s / 86400), h = Math.floor(s % 86400 / 3600), m = Math.floor(s % 3600 / 60);
+  return d ? `${d} d ${h} h` : h ? `${h} h ${m} min` : m ? `${m} min ${s % 60} s` : `${s} s`;
+}
+const fmtBytes = (b) => b >= 1048576 ? (b / 1048576).toFixed(1) + " MB" : b >= 1024 ? (b / 1024).toFixed(1) + " KB" : Math.round(b) + " B";
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function spark(id, arr) {
+  const svg = $(id);
+  if (arr.length < 2) { svg.innerHTML = ""; return; }
+  const max = Math.max(...arr, 1e-9), n = arr.length;
+  const pts = arr.map((v, i) => `${(i / (KEEP - 1) * 100).toFixed(1)},${(29 - v / max * 28).toFixed(1)}`).join(" ");
+  svg.innerHTML = `<polyline points="${pts}"></polyline>`;
+}
+function push(a, v) { a.push(v); if (a.length > KEEP) a.shift(); }
+function level(card, l) { $(card).classList.remove("warn", "bad"); if (l) $(card).classList.add(l); }
+
+function table(head, rows, numeric) {
+  if (!rows.length) return '<span class="empty">nadie</span>';
+  return "<table><thead><tr>" + head.map((h, i) => `<th class="${numeric.includes(i) ? "n" : ""}">${h}</th>`).join("") + "</tr></thead><tbody>" +
+    rows.map((r) => "<tr>" + r.map((c, i) => `<td class="${numeric.includes(i) ? "n" : ""}">${esc(c)}</td>`).join("") + "</tr>").join("") + "</tbody></table>";
+}
+
+function show(s) {
+  const v = $("verdict");
+  v.className = "verdict " + s.health.level;
+  v.textContent = { ok: "TODO BIEN", warn: "AVISOS", bad: "PROBLEMAS" }[s.health.level];
+  $("reasons").innerHTML = s.health.reasons.map((r) => `<li>${esc(r)}</li>`).join("");
+  $("uptime").textContent = fmtDur(s.uptime_s);
+  $("version").textContent = s.version;
+  const l = s.loop, n = s.net, g = s.login, w = s.world;
+  $("players").textContent = n.players;
+  $("players-sub").textContent = `${n.bots} bots · ${n.sockets} conexiones`;
+  $("tick").textContent = l.avg_ms.toFixed(2) + " ms";
+  $("tick-sub").textContent = `máx ${l.max_ms_1m.toFixed(1)} ms en 1 min · ${l.ticks_per_s.toFixed(0)} ticks/s (cada ${l.tick_ms} ms) · ${l.slow_total} lentos`;
+  level("c-tick", l.max_ms_1m > 200 ? "bad" : l.max_ms_1m > 100 ? "warn" : "");
+  $("gap").textContent = l.gap_ms + " ms";
+  $("gap-sub").textContent = `máx ${l.gap_ms_1m} ms en 1 min`;
+  level("c-gap", l.gap_ms_1m > 1000 ? "bad" : l.gap_ms_1m > 300 ? "warn" : "");
+  $("queue").textContent = `${l.msgs_pending} / ${l.ev_pending}`;
+  $("queue-sub").textContent = `mensajes de clientes / eventos de sockets (cap. ${l.ev_cap})`;
+  level("c-queue", l.ev_cap && l.ev_pending * 2 > l.ev_cap ? "bad" : (l.msgs_pending > 2000 || (l.ev_cap && l.ev_pending * 10 > l.ev_cap)) ? "warn" : "");
+  $("login").textContent = g.registered ? `${g.links}/${g.links_max}` : "caído";
+  $("login-sub").textContent = `${g.registered ? "registrado" : "sin registrar"} · ${g.game_started ? "juego iniciado" : "arrancando"} · config ${g.data_ok ? "completa" : "incompleta"}`;
+  level("c-login", !g.registered || !g.data_ok ? "bad" : g.links < g.links_max ? "warn" : "");
+  $("net").textContent = fmtBytes(n.bytes_out_s) + "/s";
+  $("net-sub").textContent = `${n.msgs_in_s.toFixed(0)} msg/s entran · ${n.frames_out_s.toFixed(0)} tramas/s salen · ${n.log_dropped} líneas de log perdidas`;
+  level("c-net", n.log_dropped ? "warn" : "");
+  $("world").textContent = w.npcs + " NPCs";
+  $("world-sub").textContent = `${w.ground} objetos en el suelo · ${w.night ? "noche" : "día"}`;
+  const ev = [];
+  if (w.double_exp_s) ev.push("Doble EXP " + fmtDur(w.double_exp_s));
+  if (w.double_ek_s) ev.push("Doble EK " + fmtDur(w.double_ek_s));
+  if (w.crusade) ev.push("Cruzada");
+  if (w.heldenian) ev.push("Heldenian");
+  if (w.apocalypse) ev.push("Apocalipsis");
+  $("events").textContent = ev.length ? ev.length + (ev.length > 1 ? " activos" : " activo") : "ninguno";
+  $("events-sub").textContent = ev.length ? ev.join(" · ") : "sin eventos activos";
+  $("maps").innerHTML = table(["mapa", "jugadores", "bots", "NPCs", "suelo"], w.maps.map((m) => [m.name, m.players, m.bots, m.npcs, m.ground]), [1, 2, 3, 4]);
+  $("people").innerHTML = table(["nombre", "nivel", "mapa", "gremio"], s.people.map((p) => [p.name, p.level, p.map, p.guild]), [1]);
+  $("problems").textContent = s.problems.length ? s.problems.join("\n") : "ninguno";
+  $("problems").className = s.problems.length ? "" : "empty";
+  push(hist.players, n.players); push(hist.tick, l.max_ms); push(hist.net, n.bytes_out_s);
+  spark("sp-players", hist.players); spark("sp-tick", hist.tick); spark("sp-net", hist.net);
+}
+
+function down(msg) {
+  const v = $("verdict");
+  v.className = "verdict down";
+  v.textContent = "SIN RESPUESTA";
+  $("banner").textContent = msg;
+  $("banner").style.display = "block";
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/stats/api/stats", { cache: "no-store" });
+    const s = await r.json();
+    if (!r.ok || s.error) { down(s.error || "error " + r.status); return; }
+    lastGood = Date.now();
+    const age = Date.now() - s.t;
+    $("age").textContent = (age / 1000).toFixed(1) + " s";
+    show(s);
+    // the snapshot is renewed every 2 s by the game loop: an old one means the loop is stuck
+    if (age > 8000) down(`El dato tiene ${(age / 1000).toFixed(0)} s: el bucle del juego no lo renueva (¿colgado?)`);
+    else $("banner").style.display = "none";
+  } catch (e) {
+    down("No se puede leer /stats/api/stats: " + e.message);
+  }
+}
+async function pollBridge() {
+  try {
+    const b = await (await fetch("/stats/api/bridge", { cache: "no-store" })).json();
+    $("bridge").textContent = b.up ? `activo (${b.ms} ms)` : "CAÍDO";
+  } catch { $("bridge").textContent = "?"; }
+}
+poll(); pollBridge();
+setInterval(poll, POLL_MS);
+setInterval(pollBridge, 10000);
+</script>
+</body>
+</html>
