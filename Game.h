@@ -153,6 +153,10 @@ class CGame
 public:
 	void DrawPartyStats(int ix, int iy, int iFrame);
 	void Notify_PartyInfo(char * Data);
+	void Notify_PartyHud(char * Data);
+	void DrawPartyFrame(short msX, short msY);
+	BOOL bPartyFrameMouse(short msX, short msY, char cLB);
+	BOOL _bIsOverDialogBox(short msX, short msY);
 	void DrawPartyStats();
 
 	void NotifyMsg_Heldenian(char * Data);
@@ -713,7 +717,10 @@ public:
 		BOOL bIsSelected;
 		short sX, sY;
 		string cName;
-		partyMember(char * inName) : cName(inName), sX(0), sY(0) {} 
+		int iLevel;		// NOTIFY_PARTY_HUD (0 until our server says: an original server never does)
+		BOOL bDead;
+		char cMap[11];	// the map he is on as the server last said ("" = unknown)
+		partyMember(char * inName) : hp(0), mp(0), Maxhp(0), Maxmp(0), bIsSelected(FALSE), sX(0), sY(0), cName(inName), iLevel(0), bDead(FALSE) { cMap[0] = 0; } 
 	}; 
 
 	std::vector<partyMember *> m_stPartyMember;
@@ -865,6 +872,11 @@ public:
 	std::map<std::string, std::string> m_mapItemDesc;	// CONTENTS/ItemDesc.txt: item name -> "<flags>\t<text>"
 	bool  m_bItemDescLoaded;
 	class CSprite * m_pEventSpr;	// v8.00 event badges (EventIcons.pak): frame 0 = EXP, 1 = EK
+	int m_sPartyX, m_sPartyY;	// where the party panel is (-1 = the default place); the player drags it, kept in the settings
+	BOOL m_bPartyDrag;
+	short m_sPartyDragDX, m_sPartyDragDY;
+	RECT m_rcPartyFrame;	// where it was drawn last (empty when it was not)
+	class CSprite * m_pPartySpr;	// our party frame (PartyHud.pak): 0 row, 1/2 HP/MP fill, 3/4 grey fills
 	class CSprite * m_pLowHealthSpr;	// v8.00 red screen edge of the low-health warning (LowHealth.pak)
 	DWORD m_dwEventEnd[2];		// timeGetTime() at which the Double EXP / Double EK events end, 0 = not running
 	bool  m_bShowGroundNames;	// v8.00 "Ground Items" option, /itemnames

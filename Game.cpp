@@ -85,6 +85,9 @@ void CGame::ReadSettings()
 	else
 		m_bShowTyping = val;
 
+	m_sPartyX = ReadSettingsVar("PartyX");
+	m_sPartyY = ReadSettingsVar("PartyY");
+
 	if((val = ReadSettingsVar("LowHealthWarn")) == -1)
 		m_bLowHealthWarn = TRUE;
 	else
@@ -195,6 +198,10 @@ void CGame::WriteSettings()
 	WriteSettingsVar("ShowGrid", m_showGrid);
 	WriteSettingsVar("ShowAllDmg", m_showAllDmg);
 	WriteSettingsVar("LowHealthWarn", m_bLowHealthWarn);
+	if (m_sPartyX >= 0 && m_sPartyY >= 0)
+	{	WriteSettingsVar("PartyX", m_sPartyX);
+		WriteSettingsVar("PartyY", m_sPartyY);
+	}
 	WriteSettingsVar("ShowTyping", m_bShowTyping);
 	WriteSettingsVar("ShowGroundNames", m_bShowGroundNames);
 	WriteSettingsVar("AllowCameraShake", m_bAllowCameraShake);
@@ -287,6 +294,11 @@ CGame::CGame()
 	m_dwTypingSentTime = 0;
 	m_bItemDescLoaded = false;
 	m_pLowHealthSpr = NULL;
+	m_pPartySpr = NULL;
+	m_sPartyX = m_sPartyY = -1;
+	m_bPartyDrag = FALSE;
+	m_sPartyDragDX = m_sPartyDragDY = 0;
+	ZeroMemory(&m_rcPartyFrame, sizeof(m_rcPartyFrame));
 	m_dwEventEnd[0] = m_dwEventEnd[1] = 0;
 	for (i = 0; i < MAXSOUNDEFFECTS; i++)
 	{	m_pCSound[i]  = NULL;
@@ -852,6 +864,7 @@ void CGame::Quit()
 	if (m_pEventSpr != NULL) delete m_pEventSpr;
 	if (m_pTypingSpr != NULL) delete m_pTypingSpr;
 	if (m_pLowHealthSpr != NULL) delete m_pLowHealthSpr;
+	if (m_pPartySpr != NULL) delete m_pPartySpr;
 
 	for (i = 0; i < 4; i++)
 	if (m_pCharList[i] != NULL) delete m_pCharList[i];
@@ -3085,6 +3098,12 @@ void CGame::UpdateScreen_OnLoading(bool bActive)
 			m_hPakFile = CreateFile("sprites\\LowHealth.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
 			if( m_hPakFile != INVALID_HANDLE_VALUE ) {
 				m_pLowHealthSpr = new class CSprite(m_hPakFile, &m_DDraw, "LowHealth", 0, FALSE);
+				CloseHandle(m_hPakFile);
+			}
+
+			m_hPakFile = CreateFile("sprites\\PartyHud.pak", GENERIC_READ, NULL, NULL, OPEN_EXISTING, NULL, NULL);
+			if( m_hPakFile != INVALID_HANDLE_VALUE ) {
+				m_pPartySpr = new class CSprite(m_hPakFile, &m_DDraw, "PartyHud", 0, FALSE);
 				CloseHandle(m_hPakFile);
 			}
 
@@ -18361,7 +18380,9 @@ void CGame::SendClientFlags()
 	*(DWORD *)(cMsg + INDEX4_MSGID) = MSGID_REQUEST_CLIENTFLAGS;
 	*(WORD *)(cMsg + INDEX2_MSGTYPE) = 0;
 	cMsg[6] = (char)((m_bShowTyping ? 1 : 0) | (m_bLowHealthWarn ? 2 : 0) | (m_bShowGroundNames ? 4 : 0));
-	m_pGSock->iSendMsg(cMsg, 7, (char)(rand() % 255 + 1));
+	// byte 7: what this client can draw, so our server sends it NOTIFY_PARTY_HUD (the original clients send 7 bytes)
+	cMsg[7] = (char)((m_pPartySpr != NULL) ? CLIENTFEATURE_PARTY_HUD : 0);
+	m_pGSock->iSendMsg(cMsg, 8, (char)(rand() % 255 + 1));
 }
 
 void CGame::TypingEventHandler(char * Data)
@@ -25857,6 +25878,7 @@ void CGame::NotifyMsgHandler(char * Data)
 			m_bLowHealthWarn = (dwFlags & 2) != 0;
 			m_bShowGroundNames = (dwFlags & 4) != 0;
 		}
+		SendClientFlags();	// on entering: tells the server what this client can draw (see SendClientFlags)
 		break;
 
 	case NOTIFY_SERVEREVENTS:
@@ -26570,6 +26592,10 @@ void CGame::NotifyMsgHandler(char * Data)
 
 	case NOTIFY_PARTY_COORDS:
 		Notify_PartyInfo(Data);
+		break;
+
+	case NOTIFY_PARTY_HUD:
+		Notify_PartyHud(Data);
 		break;
 
 	case NOTIFY_CANNOTCONSTRUCT:
@@ -30784,6 +30810,8 @@ void CGame::UpdateScreen_OnGame()
 		DrawLowHealthVignette();
 	if (iUpdateRet != 0)
 		DrawEventIcons(msWX, msY);
+	if (iUpdateRet != 0)
+		DrawPartyFrame(msWX, msY);
 
 	if (iUpdateRet != 0)
 	{	DrawEffects();
@@ -31103,6 +31131,7 @@ void CGame::NotifyMsg_Heldenian(char * Data)
 }
 void CGame::DrawPartyStats()
 {
+	if (m_pPartySpr != NULL) return; // DrawPartyFrame draws the party instead
 	int iHpBarWidth, iMpBarWidth;
 	int NextLine;
 	int BarHieght = 13;
@@ -31134,6 +31163,163 @@ void CGame::DrawPartyStats()
 			}
 	}
 }
+// NOTIFY_PARTY_HUD (our server only): one member's state for the party frame
+void CGame::Notify_PartyHud(char * Data)
+{
+ char cName[11], cMap[11];
+ int hp, maxhp, mp, maxmp;
+ WORD wLevel;
+	ZeroMemory(cName, sizeof(cName));
+	ZeroMemory(cMap, sizeof(cMap));
+	memcpy(cName, Data + 6, 10);
+	memcpy(cMap, Data + 16, 10);
+	memcpy(&hp, Data + 26, 4);
+	memcpy(&maxhp, Data + 30, 4);
+	memcpy(&mp, Data + 34, 4);
+	memcpy(&maxmp, Data + 38, 4);
+	memcpy(&wLevel, Data + 42, 2);
+	for (int i = 0; i < (int)m_stPartyMember.size(); i++)
+		if (m_stPartyMember[i]->cName.compare(cName) == 0)
+		{	partyMember * p = m_stPartyMember[i];
+			p->hp = hp;  p->Maxhp = maxhp;
+			p->mp = mp;  p->Maxmp = maxmp;
+			p->iLevel = wLevel;
+			p->bDead = (Data[44] & 1) != 0;
+			strcpy(p->cMap, cMap);
+			break;
+		}
+}
+
+// The party panel can be dragged by any part of it. Called from CommandProcessor on every frame (msWX: the cursor on the whole frame,
+// not on the 640x480 board); true = the mouse is busy with the panel and the world must not see it. The place is kept in the settings.
+BOOL CGame::bPartyFrameMouse(short msWX, short msY, char cLB)
+{
+	if (m_bPartyDrag)
+	{	if (cLB == 0)
+		{	m_bPartyDrag = FALSE;
+			WriteSettings();
+		}else
+		{	m_sPartyX = msWX - m_sPartyDragDX;
+			m_sPartyY = msY - m_sPartyDragDY;
+		}
+		return TRUE;
+	}
+	if (cLB == 0 || m_pPartySpr == NULL || m_rcPartyFrame.right <= m_rcPartyFrame.left) return FALSE;
+	if (m_stMCursor.cPrevStatus != CURSORSTATUS_NULL) return FALSE;
+	if (msWX < m_rcPartyFrame.left || msWX >= m_rcPartyFrame.right || msY < m_rcPartyFrame.top || msY >= m_rcPartyFrame.bottom) return FALSE;
+	if (_bIsOverDialogBox(msWX - UISHIFTX, msY)) return FALSE;
+	m_bPartyDrag = TRUE;
+	m_sPartyDragDX = msWX - m_rcPartyFrame.left;
+	m_sPartyDragDY = msY - m_rcPartyFrame.top;
+	return TRUE;
+}
+
+// is a dialog box under the cursor (msX on the 640x480 board)? No side effects, unlike _iCheckDlgBoxFocus.
+BOOL CGame::_bIsOverDialogBox(short msX, short msY)
+{
+	for (int i = 0; i < 61; i++)
+		if (m_cDialogBoxOrder[60 - i] != NULL)
+		{	char cID = m_cDialogBoxOrder[60 - i];
+			if ((m_stDialogBoxInfo[cID].sX <= msX) && ((m_stDialogBoxInfo[cID].sX + m_stDialogBoxInfo[cID].sSizeX) >= msX) &&
+				(m_stDialogBoxInfo[cID].sY <= msY) && ((m_stDialogBoxInfo[cID].sY + m_stDialogBoxInfo[cID].sSizeY) >= msY)) return TRUE;
+		}
+	return FALSE;
+}
+
+// Our party panel (PartyHud.pak, made by tools/sprites/make_party_hud.py: the PARTYHUD_* numbers below are the ones it prints): a header
+// ("Party"), one row per member and a bottom edge, as many rows as fit. A row has a slot with the member's level, his name with the
+// HP bar under it and the MP bar under that. The first row is you (the server never sends you your own state: the gauge panel's
+// numbers are used). The party window still decides which other members show (bIsSelected = hidden). Grey: dead, or not on this map
+// (the server says the map; an original server says nothing and a member then counts as elsewhere until his coordinates arrive).
+// The cursor over a row shows the exact numbers beside the panel. The player drags the panel anywhere (bPartyFrameMouse).
+// Pak frames: 0 header, 1 row, 2 bottom, 3/4 HP/MP fill, 5/6 the grey ones.
+#define PARTYHUD_W		98
+#define PARTYHUD_TOP_H	16
+#define PARTYHUD_ROW_H	30
+#define PARTYHUD_BOT_H	6
+#define PARTYHUD_NAME_X	26
+#define PARTYHUD_NAME_Y	1
+#define PARTYHUD_BAR_X	27
+#define PARTYHUD_BAR_W	64
+#define PARTYHUD_HP_Y	14
+#define PARTYHUD_MP_Y	20
+#define PARTYHUD_SLOT_CX	14
+#define PARTYHUD_SLOT_CY	14
+void CGame::DrawPartyFrame(short msX, short msY)
+{
+ partyMember * pRow[MAXPARTYMEMBERS + 1];
+ int iCount = 0, iHidden = 0;
+ partyMember me(m_cPlayerName);
+ char cTxt[40];
+	ZeroMemory(&m_rcPartyFrame, sizeof(m_rcPartyFrame));
+	if (m_pPartySpr == NULL || m_iPartyStatus == 0 || m_iIlusionOwnerH != NULL) return;
+	int iX0 = (m_sPartyX >= 0) ? m_sPartyX : SCREENX - PARTYHUD_W - 4;
+	int iY0 = (m_sPartyY >= 0) ? m_sPartyY : 136;
+	if (iX0 < 0) iX0 = 0;
+	if (iX0 > SCREENX - PARTYHUD_W) iX0 = SCREENX - PARTYHUD_W;
+	if (iY0 < 0) iY0 = 0;
+	if (iY0 > 440 - PARTYHUD_TOP_H - PARTYHUD_ROW_H - PARTYHUD_BOT_H) iY0 = 440 - PARTYHUD_TOP_H - PARTYHUD_ROW_H - PARTYHUD_BOT_H;
+	if (m_sPartyX >= 0 && m_sPartyY >= 0) { m_sPartyX = iX0; m_sPartyY = iY0; }
+	int iMaxRows = (440 - iY0 - PARTYHUD_TOP_H - PARTYHUD_BOT_H) / PARTYHUD_ROW_H;
+	me.Maxhp = m_stat[STAT_VIT]*3 + m_iLevel*2 + m_stat[STAT_STR]/2;
+	me.Maxmp = m_stat[STAT_MAG]*2 + m_iLevel*2 + m_stat[STAT_INT]/2;
+	me.hp = (m_iHP < me.Maxhp) ? m_iHP : me.Maxhp;
+	me.mp = (m_iMP < me.Maxmp) ? m_iMP : me.Maxmp;
+	me.iLevel = m_iLevel;
+	me.bDead = (m_iHP <= 0) ? TRUE : FALSE;
+	strncpy(me.cMap, m_cMapName, 10);
+	me.cMap[10] = 0;
+	pRow[iCount++] = &me;
+	for (int i = 0; i < (int)m_stPartyMember.size(); i++)
+		if (!m_stPartyMember[i]->bIsSelected && m_stPartyMember[i]->cName.compare(m_cPlayerName) != 0)
+		{	if (iCount < iMaxRows && iCount < MAXPARTYMEMBERS + 1) pRow[iCount++] = m_stPartyMember[i];
+			else iHidden++;
+		}
+	m_rcPartyFrame.left = iX0;
+	m_rcPartyFrame.top = iY0;
+	m_rcPartyFrame.right = iX0 + PARTYHUD_W;
+	m_rcPartyFrame.bottom = iY0 + PARTYHUD_TOP_H + iCount * PARTYHUD_ROW_H + PARTYHUD_BOT_H;
+	m_pPartySpr->PutSpriteFast(iX0, iY0, 0, m_dwCurTime);
+	PutAlignedString(iX0, iX0 + PARTYHUD_W, iY0 + (PARTYHUD_TOP_H - 13) / 2, "Party", 240, 228, 196);
+	for (int r = 0; r < iCount; r++)
+	{	partyMember * p = pRow[r];
+		int iX = iX0, iY = iY0 + PARTYHUD_TOP_H + r * PARTYHUD_ROW_H;
+		BOOL bElsewhere = (p->cMap[0] != 0) ? (strcmp(p->cMap, m_cMapName) != 0) : (p->sX == 0 && p->sY == 0);
+		BOOL bGrey = (p->bDead || bElsewhere) ? TRUE : FALSE;
+		int iHp = 0, iMp = 0;
+		if (p->Maxhp > 0) iHp = p->hp * PARTYHUD_BAR_W / p->Maxhp;
+		if (p->Maxmp > 0) iMp = p->mp * PARTYHUD_BAR_W / p->Maxmp;
+		if (p->hp > 0 && iHp < 1) iHp = 1;
+		if (iHp < 0) iHp = 0;	if (iHp > PARTYHUD_BAR_W) iHp = PARTYHUD_BAR_W;
+		if (iMp < 0) iMp = 0;	if (iMp > PARTYHUD_BAR_W) iMp = PARTYHUD_BAR_W;
+		m_pPartySpr->PutSpriteFast(iX, iY, 1, m_dwCurTime);
+		if (iHp > 0) m_pPartySpr->PutSpriteFastWidth(iX + PARTYHUD_BAR_X, iY + PARTYHUD_HP_Y, bGrey ? 5 : 3, iHp, m_dwCurTime);
+		if (iMp > 0) m_pPartySpr->PutSpriteFastWidth(iX + PARTYHUD_BAR_X, iY + PARTYHUD_MP_Y, bGrey ? 6 : 4, iMp, m_dwCurTime);
+		if (bGrey) PutString2(iX + PARTYHUD_NAME_X, iY + PARTYHUD_NAME_Y, (char *)p->cName.c_str(), 190, 190, 190);
+		else if (p == &me) PutString2(iX + PARTYHUD_NAME_X, iY + PARTYHUD_NAME_Y, (char *)p->cName.c_str(), 255, 238, 170);
+		else PutString2(iX + PARTYHUD_NAME_X, iY + PARTYHUD_NAME_Y, (char *)p->cName.c_str(), 255, 255, 255);
+		if (p->bDead) PutString2(iX + PARTYHUD_BAR_X + PARTYHUD_BAR_W - 28, iY + PARTYHUD_NAME_Y, "Dead", 245, 90, 90);
+		else if (bElsewhere) PutString2(iX + PARTYHUD_BAR_X + PARTYHUD_BAR_W - 28, iY + PARTYHUD_NAME_Y, "Away", 200, 200, 200);
+		if (p->iLevel > 0)
+		{	wsprintf(cTxt, "%d", p->iLevel);
+			PutString2(iX + PARTYHUD_SLOT_CX - (int)strlen(cTxt) * 3, iY + PARTYHUD_SLOT_CY - 6, cTxt, 236, 208, 118);
+		}
+		if ((msX >= iX) && (msX < iX + PARTYHUD_W) && (msY >= iY) && (msY < iY + PARTYHUD_ROW_H) && !m_bPartyDrag)
+		{	int iTipX = (iX >= 100) ? iX - 94 : iX + PARTYHUD_W + 6;
+			wsprintf(cTxt, "HP %d / %d", p->hp, p->Maxhp);
+			PutString2(iTipX, iY + 2, cTxt, 255, 130, 130);
+			wsprintf(cTxt, "MP %d / %d", p->mp, p->Maxmp);
+			PutString2(iTipX, iY + 16, cTxt, 130, 170, 255);
+			if (bElsewhere && p->cMap[0] != 0 && p != &me) PutString2(iTipX, iY + 30, p->cMap, 200, 200, 200);
+		}
+	}
+	m_pPartySpr->PutSpriteFast(iX0, iY0 + PARTYHUD_TOP_H + iCount * PARTYHUD_ROW_H, 2, m_dwCurTime);
+	if (iHidden > 0)
+	{	wsprintf(cTxt, "+%d more", iHidden);
+		PutString2(iX0 + 4, iY0 + PARTYHUD_TOP_H + iCount * PARTYHUD_ROW_H + PARTYHUD_BOT_H + 1, cTxt, 220, 210, 180);
+	}
+}
+
 void CGame::Notify_PartyInfo(char * Data)
 {	
 	char * cp;
@@ -31420,6 +31606,8 @@ void CGame::CommandProcessor(short msX, short msY, short indexX, short indexY, c
 	if (GetAsyncKeyState(VK_MENU)>>15) // [ALT]
 		 m_bSuperAttackMode = TRUE;
 	else m_bSuperAttackMode = FALSE;
+
+	if (bPartyFrameMouse(msX + UISHIFTX, msY, cLB)) return;	// dragging the party panel
 
 	switch (m_stMCursor.cPrevStatus) {
 	case CURSORSTATUS_NULL:
