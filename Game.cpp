@@ -118,6 +118,11 @@ void CGame::ReadSettings()
 	else
 		m_bSoundStat = val;
 
+	val = ReadSettingsVar("SoundVolume");
+	m_cSoundVolume = (val <= 100) ? (char)val : 100;
+	val = ReadSettingsVar("MusicVolume");
+	m_cMusicVolume = (val <= 100) ? (char)val : 100;
+
 	if((val = ReadSettingsVar("EKScreenshot")) == -1) 
 		m_ekScreenshot = FALSE;
 	else
@@ -173,6 +178,9 @@ void CGame::ReadSettings()
 
 uint32 CGame::ReadSettingsVar(const char * var)
 {
+	std::map<std::string, uint32>::iterator it = m_mapSettings.find(var);
+	if (it != m_mapSettings.end()) return it->second;
+
 	HKEY key;
 	DWORD dwDisp;
 
@@ -189,6 +197,7 @@ uint32 CGame::ReadSettingsVar(const char * var)
 	}
 
 	RegCloseKey(key);
+	m_mapSettings[var] = val;
 	return val;
 }
 
@@ -210,32 +219,28 @@ void CGame::WriteSettings()
 	WriteSettingsVar("DetailLevel", m_cDetailLevel);
 	WriteSettingsVar("Music", m_bMusicStat);
 	WriteSettingsVar("Sound", m_bSoundStat);
+	WriteSettingsVar("SoundVolume", m_cSoundVolume);
+	WriteSettingsVar("MusicVolume", m_cMusicVolume);
 	WriteSettingsVar("EKScreenshot", m_ekScreenshot);
 	WriteSettingsVar("TabbedNotification", m_tabbedNotification);
 	WriteSettingsVar("ManuAutoFill", m_manuAutoFill);
 	WriteSettingsVar("TimeStamp", m_showTimeStamp);
 
-	if( m_sMagicShortCut >= 0 && m_sMagicShortCut < 100 ) 
-		WriteSettingsVar("Magic", m_sMagicShortCut + 1);
-
-	if( m_sShortCut[0] >= 0 && m_sShortCut[0] < 200 )
-		WriteSettingsVar("ShortCut0", m_sShortCut[0] + 1);
-
-	if( m_sShortCut[1] >= 0 && m_sShortCut[1] < 200 )
-		WriteSettingsVar("ShortCut1", m_sShortCut[1] + 1);
-
-	if( m_sShortCut[2] >= 0 && m_sShortCut[2] < 200 )
-		WriteSettingsVar("ShortCut2", m_sShortCut[2] + 1);
-
-	if( m_sShortCut[3] >= 0 && m_sShortCut[3] < 200 )
-		WriteSettingsVar("ShortCut3", m_sShortCut[3] + 1);
-
-	if( m_sShortCut[4] >= 0 && m_sShortCut[4] < 200 )
-		WriteSettingsVar("ShortCut4", m_sShortCut[4] + 1);
+	// 0 = nothing assigned; written even then, so that a cleared key does not come back from the saved settings
+	WriteSettingsVar("Magic", (m_sMagicShortCut >= 0 && m_sMagicShortCut < 100) ? m_sMagicShortCut + 1 : 0);
+	for (int i = 0; i < 5; i++)
+	{	char cKey[16];
+		wsprintf(cKey, "ShortCut%d", i);
+		WriteSettingsVar(cKey, (m_sShortCut[i] >= 0 && m_sShortCut[i] < 200) ? m_sShortCut[i] + 1 : 0);
+	}
 }
 
 void CGame::WriteSettingsVar(const char * var, uint32 val)
 {
+	std::map<std::string, uint32>::iterator it = m_mapSettings.find(var);
+	if (it != m_mapSettings.end() && it->second == val) return;
+	m_mapSettings[var] = val;
+
 	HKEY key;
 	DWORD dwDisp;
 
@@ -292,6 +297,8 @@ CGame::CGame()
 	m_pTypingSpr = NULL;
 	m_bTypingSent = FALSE;
 	m_dwTypingSentTime = 0;
+	ZeroMemory(m_cSettingsOwner, sizeof(m_cSettingsOwner));
+	m_dwSettingsCheck = 0;
 	m_bItemDescLoaded = false;
 	m_pLowHealthSpr = NULL;
 	m_pPartySpr = NULL;
@@ -801,8 +808,6 @@ BOOL CGame::bInit(HWND hWnd, HINSTANCE hInst, char * pCmdLine)
 	m_cMenuDirCnt = 0;
 	m_cMenuFrame  = 0;
 
-	m_cSoundVolume = 100;
-	m_cMusicVolume = 100;
 
 	m_Misc.ColorTransfer(m_DDraw.m_cPixelFormat, RGB(  70,  70,  80), &m_wWR[1], &m_wWG[1], &m_wWB[1]); // Light-blue
 	m_Misc.ColorTransfer(m_DDraw.m_cPixelFormat, RGB(  70,  70,  80), &m_wWR[2], &m_wWG[2], &m_wWB[2]); // light-blue
@@ -2725,6 +2730,10 @@ void CGame::GameRecvMsgHandler(DWORD dwMsgSize, char * Data)
 
 	case MSGID_EVENT_TYPING:
 		TypingEventHandler(Data);
+		break;
+
+	case MSGID_NOTIFY_CLIENTSETTINGS:
+		ClientSettingsHandler(Data);
 		break;
 
 	case MSGID_RESPONSE_FIGHTZONE_RESERVE:
@@ -18385,6 +18394,75 @@ void CGame::SendClientFlags()
 	m_pGSock->iSendMsg(cMsg, 8, (char)(rand() % 255 + 1));
 }
 
+// Client settings in the database. The text is "key=number" lines for what WriteSettings writes, and "M=name" for each muted player.
+// /typing, /lowhealth and /itemnames are left out: NOTIFY_CLIENTFLAGS already keeps those with the character.
+std::string CGame::sSettingsText()
+{
+ std::string sText;
+ char cLine[64];
+	WriteSettings();
+	for (std::map<std::string, uint32>::iterator it = m_mapSettings.begin(); it != m_mapSettings.end(); ++it)
+	{	if (it->first == "ShowTyping" || it->first == "LowHealthWarn" || it->first == "ShowGroundNames") continue;
+		wsprintf(cLine, "%s=%u\n", it->first.c_str(), (unsigned int)it->second);
+		sText += cLine;
+	}
+	for (std::set<string>::iterator it = m_MuteList.begin(); it != m_MuteList.end(); ++it)
+		sText += "M=" + *it + "\n";
+	return sText;
+}
+
+void CGame::SaveSettingsToServer()
+{
+ char cMsg[2048];
+	if (m_pGSock == NULL) return;
+	std::string sText = sSettingsText();
+	if (sText == m_sSettingsSent || sText.size() > 2000) return;	// shortcut: a mute list too long for 2000 bytes stops being saved
+	ZeroMemory(cMsg, sizeof(cMsg));
+	*(DWORD *)(cMsg + INDEX4_MSGID) = MSGID_REQUEST_SAVECLIENTSETTINGS;
+	*(WORD *)(cMsg + INDEX2_MSGTYPE) = 0;
+	memcpy(cMsg + 6, sText.data(), sText.size());
+	m_pGSock->iSendMsg(cMsg, 6 + sText.size(), (char)(rand() % 255 + 1));
+	m_sSettingsSent = sText;
+}
+
+// On entering the game: what is saved wins over what this page holds; nothing saved yet = keep ours (and the next check saves it).
+void CGame::ClientSettingsHandler(char * Data)
+{
+	WORD wLen = *(WORD *)(Data + 6);
+	if (wLen > 2000) return;
+	std::string sText(Data + 8, wLen);
+	std::set<string> mutes;
+	BOOL bMusicWas = m_bMusicStat;
+	char cVolumeWas = m_cMusicVolume;
+	WriteSettings(); // so that a key missing from the saved text keeps its present value
+	for (size_t i = 0; i < sText.size(); )
+	{	size_t e = sText.find('\n', i);
+		if (e == std::string::npos) e = sText.size();
+		std::string sLine = sText.substr(i, e - i);
+		i = e + 1;
+		size_t q = sLine.find('=');
+		if (q == std::string::npos || q == 0) continue;
+		std::string sKey = sLine.substr(0, q), sValue = sLine.substr(q + 1);
+		if (sKey == "M") mutes.insert(sValue);
+		else m_mapSettings[sKey] = (uint32)strtoul(sValue.c_str(), NULL, 10);
+	}
+	strncpy(m_cSettingsOwner, m_cPlayerName, sizeof(m_cSettingsOwner) - 1);
+	m_sSettingsSent.clear();
+	if (sText.empty()) return;
+	ReadSettings();
+	m_MuteList = mutes;
+	SaveMuteList();
+	if (m_bSoundFlag && (m_bMusicStat != bMusicWas || m_cMusicVolume != cVolumeWas))
+	{	if (m_pBGM != NULL)
+		{	m_pBGM->bStop();
+			delete m_pBGM;
+			m_pBGM = NULL;
+		}
+		if (m_bMusicStat) StartBGM();
+	}
+	m_sSettingsSent = sSettingsText();
+}
+
 void CGame::TypingEventHandler(char * Data)
 {
  char cName[12];
@@ -30804,6 +30882,11 @@ void CGame::UpdateScreen_OnGame()
 		{	SendTypingState(bTyping);
 			m_bTypingSent = bTyping;
 			m_dwTypingSentTime = dwTypeNow;
+		}
+		// a browser tab never "quits": whatever changed in the settings goes to the server within 2 s
+		if (strcmp(m_cSettingsOwner, m_cPlayerName) == 0 && (dwTypeNow - m_dwSettingsCheck) > 2000)
+		{	m_dwSettingsCheck = dwTypeNow;
+			SaveSettingsToServer();
 		}
 	}
 	if (iUpdateRet != 0)
@@ -44628,6 +44711,7 @@ void CGame::LoadMuteList()
 	char buffer[64];
 	char fileLocation[64];
 
+	if (m_cPlayerName[0] != 0 && strcmp(m_cSettingsOwner, m_cPlayerName) == 0) return; // the saved settings already gave the list
 	m_MuteList.clear();
 	ZeroMemory(fileLocation,sizeof(fileLocation));
 	if(strlen(m_cPlayerName) > 0) wsprintf(fileLocation,"CONTENTS\\mutes\\%s.txt", m_cPlayerName);
@@ -44652,8 +44736,9 @@ void CGame::SaveMuteList()
 
 	ZeroMemory(fileLocation,sizeof(fileLocation));
 	if(strlen(m_cPlayerName) > 0) wsprintf(fileLocation,"CONTENTS\\mutes\\%s.txt", m_cPlayerName);
-	FILE* f = fopen(fileLocation,"w");
 	_mkdir("CONTENTS\\mutes");
+	FILE* f = fopen(fileLocation,"w");
+	if (f == NULL) return;
 
 	for(std::set<string>::iterator it = m_MuteList.begin(); it != m_MuteList.end(); it++){
 		fputs((*it).c_str(),f);

@@ -235,6 +235,13 @@ public:
 	void DrawLowHealthWarning();
 	void SendTypingState(int iState);
 	void SendClientFlags();
+	std::string sSettingsText();
+	void SaveSettingsToServer();
+	void ClientSettingsHandler(char * Data);
+	std::map<std::string, uint32> m_mapSettings;	// every setting by name, as last read or written (the web build has no registry)
+	std::string m_sSettingsSent;		// what the server has, as far as we know
+	char  m_cSettingsOwner[12];		// the character whose saved settings arrived: only then do we save
+	DWORD m_dwSettingsCheck;
 	void TypingEventHandler(char * Data);
 	void DrawTypingBubble(int iX, int iY, char * pName);
 	void DrawItemDescription(int iX, int iY, CItem * pItem);
