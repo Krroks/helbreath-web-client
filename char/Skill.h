@@ -11,7 +11,7 @@
 
 #include <windows.h>
 
-#include "..\..\shared\skilltypes.h"
+#include "../Shared/Skilltypes.h"
 
 class CSkill  
 {

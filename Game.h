@@ -26,10 +26,10 @@
 #include <direct.h>
 #include <set>
 
-#include "..\shared\common.h"
-#include "..\shared\NetMessages.h"
-#include "..\shared\items.h"
-#include "..\shared\npcType.h"
+#include "Shared/common.h"
+#include "Shared/NetMessages.h"
+#include "Shared/items.h"
+#include "Shared/npcType.h"
 
 #include "GlobalDef.h"
 #include "directx\DXC_ddraw.h"
