@@ -302,6 +302,8 @@ CGame::CGame()
 	m_bItemDescLoaded = false;
 	m_pLowHealthSpr = NULL;
 	m_pPartySpr = NULL;
+	m_dwMapBannerTime = 0;
+	ZeroMemory(m_cBannerMap, sizeof(m_cBannerMap));
 	m_sPartyX = m_sPartyY = -1;
 	m_bPartyDrag = FALSE;
 	m_sPartyDragDX = m_sPartyDragDY = 0;
@@ -2786,6 +2788,7 @@ void CGame::InitPlayerResponseHandler(char * Data)
 	wp = (WORD *)(Data + INDEX2_MSGTYPE);
 	switch (*wp) {
 	case MSGTYPE_CONFIRM:
+		m_cBannerMap[0] = 0; // entering the game: show the map's name even if it is the last one seen
 		//bSendCommand(MSGID_REQUEST_INITDATA, NULL, NULL, NULL, NULL, NULL, NULL);
 		ChangeGameMode(GAMEMODE_ONWAITINGINITDATA);
 		break;
@@ -18318,6 +18321,32 @@ void CGame::DrawEventIcons(short msX, short msY)
 	}
 }
 
+// The map's name, big and golden, for 3 s after entering another map (the last 500 ms translucent). Coordinates are on the
+// 640x480 UI board, high enough not to cover the player in the middle of the view.
+void CGame::DrawMapBanner()
+{
+ int i, iX, iW = 0, iLen = strlen(m_cMapMessage);
+	if (m_dwMapBannerTime == 0) return;
+	DWORD dwAge = timeGetTime() - m_dwMapBannerTime;
+	if (dwAge >= 3000) { m_dwMapBannerTime = 0; return; }
+	for (i = 0; i < iLen; i++)
+	{	int c = (unsigned char)m_cMapMessage[i];
+		iW += (c >= 33 && c <= 122) ? __cSpace[c - 33] : 8;
+	}
+	iX = 320 - iW / 2;
+	for (i = 0; i < iLen; i++)
+	{	int c = (unsigned char)m_cMapMessage[i];
+		if (c < 33 || c > 122) { iX += 8; continue; }
+		// sprfonts glyphs are white: the offsets (5/6/5 bit units) take colour away
+		if (dwAge < 2500)
+		{	m_pSprite[SPRID_INTERFACE_FONT1]->PutSpriteRGB(iX + 2, 72, c - 33, -31, -63, -31, m_dwCurTime); // shadow
+			m_pSprite[SPRID_INTERFACE_FONT1]->PutSpriteRGB(iX, 70, c - 33, 0, -10, -20, m_dwCurTime);
+		}
+		else m_pSprite[SPRID_INTERFACE_FONT1]->PutTransSpriteRGB(iX, 70, c - 33, 0, -10, -20, m_dwCurTime);
+		iX += __cSpace[c - 33];
+	}
+}
+
 // v8.00 item descriptions: CONTENTS/ItemDesc.txt (name <TAB> flags <TAB> text, flags E = "(Event Only)", M = "(Item Mall)"), loaded the
 // first time an item tooltip is drawn; the text goes under the item's own lines, wrapped, in green, the tags after it.
 void CGame::DrawItemDescription(int iX, int iY, CItem * pItem)
@@ -29655,7 +29684,7 @@ char CGame::GetOfficialMapName(char * pMapName, char * pName)
 	else
 	{	
 		strcpy(pName, pMapName);
-		toupper(pName[0]);
+		pName[0] = (char)toupper((unsigned char)pName[0]);
 		return -1;
 	}
 }
@@ -31030,6 +31059,7 @@ void CGame::UpdateScreen_OnGame()
 	{
 		DrawTopMsg();
 		DrawLowHealthWarning();
+		DrawMapBanner();
 		if (m_bIsHeldenianMode && m_bIsHeldenianMap) 
 			DrawHeldenianStats();
 
@@ -40880,6 +40910,10 @@ void CGame::InitDataResponseHandler(char * Data)
     // ------------------------------------------------------------------------+
 	wsprintf(cTxt, INITDATA_RESPONSE_HANDLER1, m_cMapMessage);
 	AddEventList(cTxt, 10);
+	if (memcmp(m_cBannerMap, m_cMapName, 10) != 0) // another map (not a recall within this one)
+	{	memcpy(m_cBannerMap, m_cMapName, 10);
+		m_dwMapBannerTime = timeGetTime();
+	}
 
 	/*if (  ( memcmp( m_cCurLocation, "middleland"	,10 ) == 0 )
 		|| ( memcmp( m_cCurLocation, "dglv2"		, 5 ) == 0 )

@@ -247,6 +247,7 @@ public:
 	void DrawItemDescription(int iX, int iY, CItem * pItem);
 	void DrawLowHealthVignette();
 	BOOL bIsLowHealth();
+	void DrawMapBanner();
 	void DrawEventIcons(short msX, short msY);
 	void DrawGroundItemNames(short sPivotX, short sPivotY, short sDivX, short sDivY, short sModX, short sModY);
 	void GroundItemNamesHandler(char * Data);
@@ -885,6 +886,8 @@ public:
 	RECT m_rcPartyFrame;	// where it was drawn last (empty when it was not)
 	class CSprite * m_pPartySpr;	// our party frame (PartyHud.pak): 0 row, 1/2 HP/MP fill, 3/4 grey fills
 	class CSprite * m_pLowHealthSpr;	// v8.00 red screen edge of the low-health warning (LowHealth.pak)
+	DWORD m_dwMapBannerTime;	// timeGetTime() of the last entry into another map, 0 = no banner (DrawMapBanner)
+	char m_cBannerMap[11];
 	DWORD m_dwEventEnd[2];		// timeGetTime() at which the Double EXP / Double EK events end, 0 = not running
 	bool  m_bShowGroundNames;	// v8.00 "Ground Items" option, /itemnames
 	struct GroundName { short sSprite, sFrame; char cColor; char cName[48]; DWORD dwAsked; BOOL bAnswered; };
